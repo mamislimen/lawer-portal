@@ -1,0 +1,18 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "functions": {
+    "app/api/socket/route.ts": {
+      "maxDuration": 300
+    }
+  },
+  "env": {
+    "DATABASE_URL": "@database-url",
+    "NEXTAUTH_SECRET": "@nextauth-secret",
+    "STRIPE_SECRET_KEY": "@stripe-secret-key",
+    "AGORA_APP_CERTIFICATE": "@agora-certificate",
+    "RESEND_API_KEY": "@resend-api-key"
+  }
+}
