@@ -17,8 +17,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Channel name is required" }, { status: 400 })
     }
 
-    const appId = process.env.AGORA_APP_ID!
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE!
+    const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE
+    
+    if (!appId || !appCertificate) {
+      return NextResponse.json({ error: "Agora configuration is missing" }, { status: 500 })
+    }
     const role = RtcRole.PUBLISHER
     const expirationTimeInSeconds = 3600 // 1 hour
     const currentTimestamp = Math.floor(Date.now() / 1000)

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { EmailService } from "@/lib/email"
+import { NotificationType } from "@prisma/client"
 
 export class NotificationService {
   private emailService = new EmailService()
@@ -9,7 +10,7 @@ export class NotificationService {
     userId: string,
     title: string,
     message: string,
-    type: "MESSAGE" | "INFO" | "SUCCESS" | "WARNING" | "ERROR" | "VIDEO_CALL" | "DOCUMENT",
+    type: NotificationType,
     actionUrl?: string,
   ) {
     try {
@@ -26,13 +27,13 @@ export class NotificationService {
       // Send email notification if user preferences allow
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { email: true, name: true }, // Replace `firstName` with `name`
+        select: { email: true, name: true }, 
       })
 
       if (user) {
         // Check user notification preferences here
         // For now, we'll send email for important notifications
-        if (type === "WARNING" || type === "ERROR") {
+        if (type === "APPOINTMENT_CANCELLED" || type === "PAYMENT_RECEIVED") {
           await this.emailService.sendCaseUpdateNotification(user.email, {
             caseTitle: title,
             description: message,
@@ -61,7 +62,7 @@ export class NotificationService {
           id: notificationId,
           userId, // Ensure user can only mark their own notifications
         },
-        data: { read: true }, // Changed from `isRead` to `read`
+        data: { isRead: true }, 
       })
 
       return { success: true }
@@ -80,7 +81,7 @@ export class NotificationService {
       const count = await prisma.notification.count({
         where: {
           userId,
-          read: false, // Changed from `isRead` to `read`
+          isRead: false, 
         },
       })
 

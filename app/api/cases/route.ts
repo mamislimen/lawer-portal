@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user || session.user.role !== "LAWYER") {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         userId: validatedData.clientId,
         title: "New Case Created",
         message: `A new case "${validatedData.title}" has been created for you`,
-        type: "INFO",
+        type: "GENERAL",
       },
     })
 

@@ -1,61 +1,59 @@
-import { withAuth } from "next-auth/middleware"
-import { NextResponse } from "next/server"
-import { getToken } from "next-auth/jwt"
-import type { NextRequest } from "next/server"
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-export default withAuth(
-  async function middleware(req: NextRequest) {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    const { pathname } = req.nextUrl
+// Define roles
+type Role = 'CLIENT' | 'LAWYER' | 'ADMIN';
 
-    // Admin routes: Ensure the token has the 'admin' role
-    if (pathname.startsWith("/admin") && token?.role !== "admin") {
-      return NextResponse.redirect(new URL("/unauthorized", req.url))
-    }
+// Protect paths with role-based access
+const roleProtectedPaths: Record<string, Role[]> = {
+  '/client': ['CLIENT'],
+  '/dashboard': ['LAWYER', 'ADMIN'],
+  '/dashboard/documents': ['LAWYER', 'ADMIN'],
+  '/admin': ['ADMIN'],
+};
 
-    // Lawyer routes: Ensure the token has the 'lawyer' role
-    if (pathname.startsWith("/dashboard") && token?.role !== "lawyer") {
-      return NextResponse.redirect(new URL("/unauthorized", req.url))
-    }
+// Secret for JWT from .env
+const SECRET = process.env.NEXTAUTH_SECRET;
 
-    // Client routes: Ensure the token has the 'client' role
-    if (pathname.startsWith("/client") && token?.role !== "CLIENT") {
-      return NextResponse.redirect(new URL("/unauthorized", req.url))
-    }
+export async function middleware(req: NextRequest) {
+  const url = req.nextUrl.clone();
 
-    // If no token or role issues, send to unauthorized page
-   // if (!token) {
-     // return NextResponse.redirect(new URL("/login", req.url))
-   // }
-
-    // Rate limiting headers
-    const response = NextResponse.next()
-    response.headers.set("X-Content-Type-Options", "nosniff")
-    response.headers.set("X-Frame-Options", "DENY")
-    response.headers.set("X-XSS-Protection", "1; mode=block")
-    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
-
-    return response
-  },
-  {
-    callbacks: {
-      authorized: async ({ token, req }) => {
-        const { pathname } = req.nextUrl
-
-        // Public routes (auth, home, etc.)
-        if (pathname.startsWith("/auth") || pathname === "/") {
-          return true
-        }
-
-        // Protected routes require authentication, return true if token exists
-        return !!token
-      },
-    },
+  // Skip static files and public folder
+  if (url.pathname.startsWith('/_next') || url.pathname.startsWith('/public')) {
+    return NextResponse.next();
   }
-)
 
+  // Get session token
+  const token = await getToken({ req, secret: SECRET });
+
+  if (!token) {
+    // Not authenticated, redirect to sign-in
+    url.pathname = '/auth/signin';
+    return NextResponse.redirect(url);
+  }
+
+  const userRole = (token.role || '').toUpperCase() as Role;
+
+  // Check role-based access
+  for (const path in roleProtectedPaths) {
+    if (url.pathname.startsWith(path)) {
+      if (!roleProtectedPaths[path].includes(userRole)) {
+        url.pathname = '/unauthorized'; // Or show a 403 page
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
+  return NextResponse.next();
+}
+
+// Apply middleware to all routes except API
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|public).*)", // Match all routes except API and static files
+    '/client/:path*',
+    '/dashboard/:path*',
+    '/admin/:path*',
   ],
-}
+};

@@ -102,7 +102,6 @@ export async function POST(request: NextRequest) {
       const caseAccess = await prisma.case.findFirst({
         where: {
           id: validatedData.caseId,
-          OR: [{ lawyerId: session.user.id }, { clientId: session.user.id }],
         },
       })
 
@@ -164,7 +163,7 @@ export async function POST(request: NextRequest) {
         userId: validatedData.receiverId,
         title: "New Message",
         message: `You have a new message from ${session.user.name}`,
-        type: "MESSAGE",
+        type: "APPOINTMENT_UPDATED",
       },
     })
 

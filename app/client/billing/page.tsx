@@ -1,286 +1,277 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Separator } from "@/components/ui/separator"
-import { DollarSign, Calendar, Download, CreditCard, Clock, AlertCircle } from "lucide-react"
+import { DollarSign, Download, CreditCard, AlertCircle, Loader2, Plus, FileText, Clock, RefreshCw } from "lucide-react"
+import { useBilling } from "@/hooks/useBilling"
+import { format, parseISO } from "date-fns"
+import { toast } from "sonner"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { CreditCardForm } from "@/components/billing/CreditCardForm"
+import { PaymentDialog } from "@/components/billing/PaymentDialog"
+import { SummaryCard } from "@/components/billing/SummaryCard"
+import { loadStripe } from "@stripe/stripe-js";
 
-const mockInvoices = [
-  {
-    id: "INV-001",
-    date: "2024-01-20",
-    description: "Legal consultation and case preparation",
-    amount: 1500.0,
-    status: "Paid",
-    dueDate: "2024-01-30",
-    paidDate: "2024-01-25",
-  },
-  {
-    id: "INV-002",
-    date: "2024-01-15",
-    description: "Document review and contract analysis",
-    amount: 800.0,
-    status: "Paid",
-    dueDate: "2024-01-25",
-    paidDate: "2024-01-22",
-  },
-  {
-    id: "INV-003",
-    date: "2024-01-25",
-    description: "Court filing fees and legal representation",
-    amount: 2200.0,
-    status: "Pending",
-    dueDate: "2024-02-05",
-    paidDate: null,
-  },
-]
 
-const mockTimeEntries = [
-  {
-    id: 1,
-    date: "2024-01-20",
-    lawyer: "John Doe",
-    description: "Case strategy meeting and evidence review",
-    hours: 2.5,
-    rate: 300,
-    amount: 750,
-  },
-  {
-    id: 2,
-    date: "2024-01-18",
-    lawyer: "John Doe",
-    description: "Document preparation and client consultation",
-    hours: 1.5,
-    rate: 300,
-    amount: 450,
-  },
-  {
-    id: 3,
-    date: "2024-01-22",
-    lawyer: "Sarah Wilson",
-    description: "Legal research and case analysis",
-    hours: 3.0,
-    rate: 250,
-    amount: 750,
-  },
-]
+// Type for Stripe
+type StripeInstance = any
+
+const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount)
 
 export default function ClientBillingPage() {
+  const router = useRouter()
+  const [isProcessingPayment, setIsProcessingPayment] = useState<string | null>(null)
+  const [showAddCard, setShowAddCard] = useState(false)
+  const [paymentInvoice, setPaymentInvoice] = useState<any>(null)
+  const { invoices, timeEntries, isLoading, error, refetch } = useBilling()
+
+  // Summary calculations
+  const totalPaid = invoices
+    .filter((inv) => inv.status === "PAID")
+    .reduce((sum, inv) => sum + inv.total, 0)
+
+  const totalPending = invoices
+    .filter((inv) => ["SENT", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status))
+    .reduce((sum, inv) => sum + inv.total, 0)
+
+  const totalHours = timeEntries
+    .filter((te) => te.status === "PENDING")
+    .reduce((sum, te) => sum + (te.hours || 0), 0)
+
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Paid":
+      case "PAID":
         return "bg-green-100 text-green-800 border-green-200"
-      case "Pending":
+      case "SENT":
+      case "PARTIALLY_PAID":
+        return "bg-blue-100 text-blue-800 border-blue-200"
+      case "PENDING":
         return "bg-yellow-100 text-yellow-800 border-yellow-200"
-      case "Overdue":
+      case "OVERDUE":
         return "bg-red-100 text-red-800 border-red-200"
       default:
         return "bg-gray-100 text-gray-800 border-gray-200"
     }
   }
 
-  const totalBilled = mockInvoices.reduce((sum, invoice) => sum + invoice.amount, 0)
-  const totalPaid = mockInvoices
-    .filter((inv) => inv.status === "Paid")
-    .reduce((sum, invoice) => sum + invoice.amount, 0)
-  const totalPending = mockInvoices
-    .filter((inv) => inv.status === "Pending")
-    .reduce((sum, invoice) => sum + invoice.amount, 0)
+  const getStatusText = (status: string) =>
+    status
+      .split("_")
+      .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+      .join(" ")
+
+  const handlePaymentSuccess = () => {
+    refetch()
+    setPaymentInvoice(null)
+    toast.success("Payment processed successfully!")
+  }
+
+  const handleAddCardSuccess = () => {
+    setShowAddCard(false)
+    toast.success("Payment method added successfully!")
+  }
+
+  const handlePayInvoice = (invoice: any) => {
+    setPaymentInvoice(invoice)
+  }
+
+  const loadStripe = async (publishableKey: string): Promise<StripeInstance | null> => {
+    try {
+      const { loadStripe: loadStripeJS } = await import("@stripe/stripe-js")
+      return await loadStripeJS(publishableKey)
+    } catch (err) {
+      console.error("Failed to load Stripe:", err)
+      return null
+    }
+  }
+
+  const handlePayNow = async (invoiceId: string) => {
+    if (!stripePublishableKey) {
+      toast.error("Payment processing is not configured")
+      return
+    }
+
+    try {
+      setIsProcessingPayment(invoiceId)
+
+      const response = await fetch("/api/client/billing/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to process payment")
+      }
+
+      const { clientSecret } = await response.json()
+      const stripe = await loadStripe(stripePublishableKey)
+      if (!stripe) throw new Error("Failed to load payment processor")
+
+      const { error: stripeError } = await stripe.confirmCardPayment(clientSecret)
+      if (stripeError) throw stripeError
+
+      refetch()
+      toast.success("Payment successful!")
+    } catch (err: any) {
+      console.error("Payment error:", err)
+      toast.error(err.message || "Failed to process payment")
+    } finally {
+      setIsProcessingPayment(null)
+    }
+  }
+
+  if (isLoading)
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+      </div>
+    )
+
+  if (error)
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        <AlertCircle className="h-5 w-5 mr-2" />
+        <span>Error loading billing information. Please try again.</span>
+      </div>
+    )
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">Billing</h1>
-          <p className="text-muted-foreground text-lg">View your invoices and payment history.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Billing & Invoices</h1>
+          <p className="text-muted-foreground">Manage your invoices and payment methods</p>
         </div>
-        <Button className="gap-2">
-          <CreditCard className="h-4 w-4" />
-          Update Payment Method
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <Button variant="outline" onClick={() => setShowAddCard(true)} className="w-full md:w-auto">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Payment Method
+          </Button>
+          <Button onClick={() => window.print()} variant="outline" className="w-full md:w-auto">
+            <Download className="mr-2 h-4 w-4" />
+            Export Statements
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Billed</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">${totalBilled.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">All time</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Paid</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">${totalPaid.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Completed payments</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">${totalPending.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Pending payment</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">This Month</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">$2,200</div>
-            <p className="text-xs text-muted-foreground">Current month charges</p>
-          </CardContent>
-        </Card>
+      {/* Summary */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryCard title="Total Paid" value={formatCurrency(totalPaid)} description="All time payments" icon={<DollarSign className="h-4 w-4" />} />
+        <SummaryCard
+          title="Pending Payments"
+          value={formatCurrency(totalPending)}
+          description={`Across ${invoices.filter((inv) => ["SENT", "OVERDUE"].includes(inv.status)).length} invoices`}
+          icon={<FileText className="h-4 w-4" />}
+        />
+        <SummaryCard title="Tracked Hours" value={totalHours.toFixed(1)} description="Pending time entries" icon={<Clock className="h-4 w-4" />} />
       </div>
 
-      {/* Payment Method */}
+      {/* Invoices Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Payment Method</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-12 bg-muted rounded flex items-center justify-center text-xs font-medium">VISA</div>
-              <div>
-                <p className="font-medium">•••• •••• •••• 4242</p>
-                <p className="text-sm text-muted-foreground">Expires 12/25</p>
-              </div>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <CardTitle>Invoices</CardTitle>
+              <CardDescription>View and manage your invoices</CardDescription>
             </div>
-            <Button variant="outline" className="bg-transparent">
-              Update
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Recent Invoices */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Invoices</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mockInvoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell className="font-medium">{invoice.id}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      {new Date(invoice.date).toLocaleDateString()}
-                    </div>
-                  </TableCell>
-                  <TableCell>{invoice.description}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />${invoice.amount.toLocaleString()}
-                    </div>
-                  </TableCell>
-                  <TableCell>{new Date(invoice.dueDate).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline" className="gap-2 bg-transparent">
-                        <Download className="h-4 w-4" />
-                        Download
-                      </Button>
-                      {invoice.status === "Pending" && (
-                        <Button size="sm" className="gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          Pay Now
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          {invoices.length === 0 ? (
+            <div className="text-center py-12 space-y-2">
+              <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="text-lg font-medium">No invoices</h3>
+              <p className="text-sm text-muted-foreground">You don't have any invoices yet.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice) => (
+                    <TableRow key={invoice.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">#{invoice.invoiceNumber}</TableCell>
+                      <TableCell>{format(parseISO(invoice.issueDate), "MMM d, yyyy")}</TableCell>
+                      <TableCell className={invoice.status === "OVERDUE" ? "text-red-500 font-medium" : ""}>
+                        {format(parseISO(invoice.dueDate), "MMM d, yyyy")}
+                      </TableCell>
+                      <TableCell>{formatCurrency(invoice.total)}</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(invoice.status)} variant="outline">
+                          {getStatusText(invoice.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => window.open(`/api/invoices/${invoice.id}/download`, "_blank")}>
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          {invoice.status !== "PAID" && (
+                            <Button size="sm" onClick={() => handlePayInvoice(invoice)} disabled={isProcessingPayment === invoice.id}>
+                              {isProcessingPayment === invoice.id ? (
+                                <span>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Processing...
+                                </span>
+                              ) : (
+                                <span>
+                                  <CreditCard className="h-4 w-4 mr-2" />
+                                  Pay
+                                </span>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Time Entries */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Time Entries</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Lawyer</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Hours</TableHead>
-                <TableHead>Rate</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mockTimeEntries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      {new Date(entry.date).toLocaleDateString()}
-                    </div>
-                  </TableCell>
-                  <TableCell>{entry.lawyer}</TableCell>
-                  <TableCell>{entry.description}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      {entry.hours}h
-                    </div>
-                  </TableCell>
-                  <TableCell>${entry.rate}/hr</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />${entry.amount.toLocaleString()}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      {/* Add Card Dialog */}
+      <Dialog open={showAddCard} onOpenChange={setShowAddCard}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add Payment Method</DialogTitle>
+            <DialogDescription>Add a new credit or debit card to your account</DialogDescription>
+          </DialogHeader>
+          <CreditCardForm onSuccess={handleAddCardSuccess} />
+        </DialogContent>
+      </Dialog>
 
-          <Separator className="my-4" />
-
-          <div className="flex justify-between items-center">
-            <span className="font-medium">Total Time Charges:</span>
-            <span className="text-lg font-bold">
-              ${mockTimeEntries.reduce((sum, entry) => sum + entry.amount, 0).toLocaleString()}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Payment Dialog */}
+      {paymentInvoice && (
+        <PaymentDialog open={!!paymentInvoice} onOpenChange={(open) => !open && setPaymentInvoice(null)} invoice={paymentInvoice} onSuccess={handlePaymentSuccess} />
+      )}
     </div>
   )
 }

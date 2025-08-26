@@ -15,61 +15,63 @@ import {
   Crown,
   Video,
 } from "lucide-react"
-import { useLanguage } from "@/contexts/language-context"
 
 export function ClientSidebar() {
   const pathname = usePathname()
-  const { t } = useLanguage()
 
   const navItems = [
     {
-      name: t("nav.dashboard"),
+      name: "dashboard",
       href: "/client",
+      label: "Dashboard",
       icon: LayoutDashboard,
     },
     {
-      name: t("nav.myCases"),
+      name: "cases",
       href: "/client/cases",
+      label: "My Cases",
       icon: Briefcase,
     },
     {
-      name: t("nav.videoCalls"),
+      name: "video-calls",
       href: "/client/video-calls",
+      label: "Video Calls",
       icon: Video,
     },
     {
-      name: t("nav.messages"),
+      name: "messages",
       href: "/client/messages",
+      label: "Messages",
       icon: MessageSquare,
     },
     {
-      name: t("nav.appointments"),
+      name: "appointments",
       href: "/client/appointments",
+      label: "Appointments",
       icon: Calendar,
     },
     {
-      name: t("nav.documents"),
+      name: "documents",
       href: "/client/documents",
+      label: "Documents",
       icon: FileText,
     },
     {
-      name: t("nav.analytics"),
+      name: "analytics",
       href: "/client/analytics",
+      label: "Analytics",
       icon: BarChart3,
     },
     {
-      name: t("nav.subscription"),
-      href: "/client/subscription",
-      icon: Crown,
-    },
-    {
-      name: t("nav.billing"),
+      name: "billing",
       href: "/client/billing",
+      label: "Billing",
       icon: CreditCard,
     },
     {
-      name: t("nav.profile"),
+      name: "profile",
       href: "/client/profile",
+      label: "Profile",
       icon: User,
     },
   ]
@@ -89,7 +91,7 @@ export function ClientSidebar() {
           const isActive = pathname === item.href
           return (
             <Link
-              key={item.name}
+              key={item.href}
               href={item.href}
               className={cn(
                 "flex items-center gap-2 lg:gap-3 rounded-xl px-3 lg:px-4 py-2 lg:py-3 text-sm font-medium transition-all duration-200",
@@ -99,22 +101,11 @@ export function ClientSidebar() {
               )}
             >
               <item.icon className="h-4 w-4 lg:h-5 lg:w-5 flex-shrink-0" />
-              <span className="truncate">{item.name}</span>
+              <span className="truncate">{item.label}</span>
             </Link>
           )
         })}
       </nav>
-      <div className="p-2 lg:p-4 border-t border-gray-200">
-        <div className="flex items-center gap-2 lg:gap-3 p-2 lg:p-3 rounded-lg gradient-card formal-shadow">
-          <div className="h-6 w-6 lg:h-8 lg:w-8 gradient-button rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-white">JS</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs lg:text-sm font-medium truncate text-black">John Smith</p>
-            <p className="text-xs text-gray-600 truncate">Premium Client</p>
-          </div>
-        </div>
-      </div>
     </aside>
   )
 }

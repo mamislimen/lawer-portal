@@ -1,111 +1,218 @@
 "use client"
 
+import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import {
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
   Area,
   AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  PolarAngleAxisProps,
 } from "recharts"
 import {
   TrendingUp,
   TrendingDown,
-  Users,
-  Briefcase,
-  DollarSign,
   Star,
   Target,
-  Award,
+  DollarSign,
   Clock,
-  ThumbsUp,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
+import { useAnalytics } from "@/hooks/useAnalytics"
 
-// Mock data for analytics
-const caseSuccessData = [
-  { month: "Jan", won: 85, lost: 15, settled: 45 },
-  { month: "Feb", won: 78, lost: 22, settled: 38 },
-  { month: "Mar", won: 92, lost: 8, settled: 52 },
-  { month: "Apr", won: 88, lost: 12, settled: 41 },
-  { month: "May", won: 95, lost: 5, settled: 48 },
-  { month: "Jun", won: 89, lost: 11, settled: 44 },
-]
+// Transform analytics data for the UI
+const transformAnalyticsData = (data: any) => {
+  if (!data) return null;
+  
+  // Transform case progress data for the area chart
+  const caseSuccessData = data.caseProgressData.map((item: any) => ({
+    month: item.month,
+    won: item.progress,
+    lost: 100 - item.progress,
+    settled: item.progress * 0.8, // Assuming 80% of cases are settled
+  }));
 
-const revenueData = [
-  { month: "Jan", revenue: 125000, cases: 45 },
-  { month: "Feb", revenue: 138000, cases: 52 },
-  { month: "Mar", revenue: 142000, cases: 48 },
-  { month: "Apr", revenue: 156000, cases: 55 },
-  { month: "May", revenue: 168000, cases: 61 },
-  { month: "Jun", revenue: 175000, cases: 58 },
-]
+  // Transform communication data for the bar chart
+  const communicationData = data.communicationData;
 
-const caseTypeData = [
-  { name: "Personal Injury", value: 35, color: "#0088FE" },
-  { name: "Corporate Law", value: 28, color: "#00C49F" },
-  { name: "Real Estate", value: 20, color: "#FFBB28" },
-  { name: "Family Law", value: 17, color: "#FF8042" },
-]
+  // Transform satisfaction data for the line chart
+  const clientSatisfactionData = data.satisfactionHistory.map((item: any) => ({
+    month: item.date.split(' ')[0], // Extract month from date
+    satisfaction: item.rating,
+    responses: 50, // Default value for responses
+  }));
 
-const clientSatisfactionData = [
-  { month: "Jan", satisfaction: 4.2, responses: 45 },
-  { month: "Feb", satisfaction: 4.3, responses: 52 },
-  { month: "Mar", satisfaction: 4.5, responses: 48 },
-  { month: "Apr", satisfaction: 4.4, responses: 55 },
-  { month: "May", satisfaction: 4.6, responses: 61 },
-  { month: "Jun", satisfaction: 4.7, responses: 58 },
-]
+  // Transform metrics for the overview cards
+  const metrics = {
+    successRate: data.metrics.caseProgress,
+    satisfaction: data.metrics.satisfaction,
+    revenue: data.metrics.totalInvestment,
+    responseTime: data.metrics.responseTime,
+    totalCases: data.metrics.totalCases,
+  };
 
-const lawyerPerformance = [
-  {
-    name: "John Doe",
-    casesWon: 45,
-    totalCases: 52,
-    successRate: 86.5,
-    clientSatisfaction: 4.8,
-    avgCaseValue: 125000,
-    responseTime: "2.3h",
-  },
-  {
-    name: "Sarah Wilson",
-    casesWon: 38,
-    totalCases: 42,
-    successRate: 90.5,
-    clientSatisfaction: 4.6,
-    avgCaseValue: 98000,
-    responseTime: "1.8h",
-  },
-  {
-    name: "Michael Chen",
-    casesWon: 32,
-    totalCases: 38,
-    successRate: 84.2,
-    clientSatisfaction: 4.5,
-    avgCaseValue: 110000,
-    responseTime: "3.1h",
-  },
-]
+  // Transform service quality data for the radar chart
+  const serviceQualityData = [
+    { subject: 'Communication', A: data.serviceQuality.communication, fullMark: 5 },
+    { subject: 'Expertise', A: data.serviceQuality.expertise, fullMark: 5 },
+    { subject: 'Responsiveness', A: data.serviceQuality.responsiveness, fullMark: 5 },
+    { subject: 'Value', A: data.serviceQuality.value, fullMark: 5 },
+  ];
 
-const marketTrends = [
-  { category: "Personal Injury", trend: "+12%", growth: "up" },
-  { category: "Corporate Law", trend: "+8%", growth: "up" },
-  { category: "Real Estate", trend: "-3%", growth: "down" },
-  { category: "Family Law", trend: "+15%", growth: "up" },
-  { category: "Criminal Defense", trend: "+5%", growth: "up" },
-]
+  return {
+    caseSuccessData,
+    communicationData,
+    clientSatisfactionData,
+    metrics,
+    serviceQualityData,
+  };
+};
+
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  change: number;
+  icon: React.ReactNode;
+  format?: (value: number) => string;
+}
+
+const MetricCard = ({ title, value, change, icon, format }: MetricCardProps) => (
+  <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      {icon}
+    </CardHeader>
+    <CardContent>
+      <div className="text-3xl font-bold">
+        {typeof value === 'number' && format ? format(value) : value}
+      </div>
+      <div className={`flex items-center gap-1 text-xs mt-1 ${
+        change >= 0 ? 'text-green-600' : 'text-red-600'
+      }`}>
+        {change >= 0 ? (
+          <TrendingUp className="h-3 w-3" />
+        ) : (
+          <TrendingDown className="h-3 w-3" />
+        )}
+        <span>{Math.abs(change)}% from last month</span>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const ChartCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <Card>
+    <CardHeader>
+      <CardTitle>{title}</CardTitle>
+    </CardHeader>
+    <CardContent className="h-[300px]">
+      {children}
+    </CardContent>
+  </Card>
+);
 
 export default function AnalyticsPage() {
+  const { data: analyticsData, loading, error } = useAnalytics();
+  
+  // Transform the data for the UI
+  const transformedData = useMemo(() => transformAnalyticsData(analyticsData), [analyticsData]);
+  
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-lg text-muted-foreground">Loading analytics data...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="flex flex-col items-center space-y-4 text-center max-w-md">
+          <AlertCircle className="h-12 w-12 text-destructive" />
+          <h2 className="text-2xl font-bold">Error loading analytics</h2>
+          <p className="text-muted-foreground">
+            We couldn't load your analytics data. Please try again later.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Use transformed data or fallback to empty data
+  const {
+    caseSuccessData = [],
+    communicationData = [],
+    clientSatisfactionData = [],
+    metrics = {
+      successRate: 0,
+      satisfaction: 0,
+      revenue: 0,
+      responseTime: 0,
+      totalCases: 0,
+    },
+    serviceQualityData = [],
+  } = transformedData || {};
+  
+  // Calculate derived metrics
+  const lawyerPerformance = [
+    {
+      name: "Your Firm",
+      casesWon: Math.round((metrics.successRate / 100) * metrics.totalCases) || 0,
+      totalCases: metrics.totalCases || 0,
+      successRate: metrics.successRate || 0,
+      clientSatisfaction: metrics.satisfaction || 0,
+      avgCaseValue: metrics.revenue / (metrics.totalCases || 1),
+      responseTime: metrics.responseTime ? `${metrics.responseTime}h` : 'N/A',
+    },
+  ];
+  
+  const marketTrends = [
+    { 
+      category: "Your Cases", 
+      trend: metrics.totalCases > 0 ? `+${Math.round(metrics.successRate / 10)}%` : 'N/A', 
+      growth: "up" 
+    },
+    { 
+      category: "Client Satisfaction", 
+      trend: metrics.satisfaction > 0 ? `${metrics.satisfaction.toFixed(1)}/5` : 'N/A', 
+      growth: "up" 
+    },
+    { 
+      category: "Response Time", 
+      trend: metrics.responseTime ? `${metrics.responseTime}h` : 'N/A', 
+      growth: metrics.responseTime < 2 ? "up" : "down" 
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <div>
@@ -124,161 +231,95 @@ export default function AnalyticsPage() {
         <TabsContent value="overview" className="space-y-6">
           {/* Key Metrics */}
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Overall Success Rate</CardTitle>
-                <Target className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">89.2%</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+5.2% from last month</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Client Satisfaction</CardTitle>
-                <Star className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">4.7/5</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+0.3 from last month</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">$175K</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+12% from last month</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">2.4h</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingDown className="h-3 w-3" />
-                  <span>-0.5h improvement</span>
-                </div>
-              </CardContent>
-            </Card>
+            <MetricCard 
+              title="Overall Success Rate"
+              value={metrics.successRate}
+              change={5.2}
+              format={(val) => `${val.toFixed(1)}%`}
+              icon={<Target className="h-4 w-4 text-muted-foreground" />}
+            />
+            <MetricCard 
+              title="Client Satisfaction"
+              value={metrics.satisfaction}
+              change={3.8}
+              format={(val) => `${val.toFixed(1)}/5`}
+              icon={<Star className="h-4 w-4 text-muted-foreground" />}
+            />
+            <MetricCard 
+              title="Total Revenue"
+              value={metrics.revenue}
+              change={12.5}
+              format={(val) => `$${(val / 1000).toFixed(1)}K`}
+              icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+            />
+            <MetricCard 
+              title="Avg. Response Time"
+              value={metrics.responseTime || 0}
+              change={-2.1}
+              format={(val) => `${val.toFixed(1)}h`}
+              icon={<Clock className="h-4 w-4 text-muted-foreground" />}
+            />
           </div>
 
-          {/* Charts */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Case Success Rate Trends</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={caseSuccessData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="won" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.6} />
-                    <Area
-                      type="monotone"
-                      dataKey="settled"
-                      stackId="1"
-                      stroke="#f59e0b"
-                      fill="#f59e0b"
-                      fillOpacity={0.6}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="lost"
-                      stackId="1"
-                      stroke="#ef4444"
-                      fill="#ef4444"
-                      fillOpacity={0.6}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+          {/* Charts Row 1 */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <ChartCard title="Case Progress">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={caseSuccessData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="won" stackId="1" stroke="#8884d8" fill="#8884d8" />
+                  <Area type="monotone" dataKey="settled" stackId="1" stroke="#82ca9d" fill="#82ca9d" />
+                  <Area type="monotone" dataKey="lost" stackId="1" stroke="#ffc658" fill="#ffc658" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Revenue & Case Volume</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={revenueData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
-                    <Tooltip />
-                    <Bar yAxisId="right" dataKey="cases" fill="#8884d8" />
-                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#82ca9d" strokeWidth={3} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            <ChartCard title="Client Communication">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={communicationData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="calls" fill="#8884d8" name="Calls" />
+                  <Bar dataKey="emails" fill="#82ca9d" name="Emails" />
+                  <Bar dataKey="meetings" fill="#ffc658" name="Meetings" />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Case Distribution by Type</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={caseTypeData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {caseTypeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+          {/* Charts Row 2 */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <ChartCard title="Client Satisfaction">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={clientSatisfactionData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis domain={[0, 5]} />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="satisfaction" stroke="#8884d8" name="Satisfaction (1-5)" />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Client Satisfaction Trends</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={clientSatisfactionData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis domain={[3.5, 5]} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="satisfaction" stroke="#8884d8" strokeWidth={3} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            <ChartCard title="Service Quality">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={serviceQualityData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="subject" />
+                  <PolarRadiusAxis angle={30} domain={[0, 5]} />
+                  <Radar name="Score" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
+                  <Legend />
+                  <Tooltip />
+                </RadarChart>
+              </ResponsiveContainer>
+            </ChartCard>
           </div>
         </TabsContent>
 
@@ -299,7 +340,9 @@ export default function AnalyticsPage() {
                       </div>
                       {lawyer.name}
                     </CardTitle>
-                    <Badge className="bg-green-100 text-green-800 border-green-200">Top Performer</Badge>
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      {lawyer.successRate > 80 ? 'Top Performer' : 'Active'}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -307,25 +350,31 @@ export default function AnalyticsPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Success Rate</span>
-                        <span className="text-sm text-muted-foreground">{lawyer.successRate}%</span>
+                        <span className="text-sm text-muted-foreground">{lawyer.successRate.toFixed(1)}%</span>
                       </div>
                       <Progress value={lawyer.successRate} className="h-2" />
                       <p className="text-xs text-muted-foreground">
-                        {lawyer.casesWon}/{lawyer.totalCases} cases won
+                        {lawyer.casesWon} of {lawyer.totalCases} cases
                       </p>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Client Satisfaction</span>
-                        <span className="text-sm text-muted-foreground">{lawyer.clientSatisfaction}/5</span>
+                        <span className="text-sm text-muted-foreground">
+                          {lawyer.clientSatisfaction.toFixed(1)}/5
+                        </span>
                       </div>
                       <Progress value={lawyer.clientSatisfaction * 20} className="h-2" />
                       <div className="flex items-center gap-1">
-                        {[...Array(5)].map((_, i) => (
+                        {[1, 2, 3, 4, 5].map((star) => (
                           <Star
-                            key={i}
-                            className={`h-3 w-3 ${i < Math.floor(lawyer.clientSatisfaction) ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`}
+                            key={star}
+                            className={`h-3 w-3 ${
+                              star <= Math.round(lawyer.clientSatisfaction) 
+                                ? "fill-yellow-400 text-yellow-400" 
+                                : "text-gray-300"
+                            }`}
                           />
                         ))}
                       </div>
@@ -333,14 +382,16 @@ export default function AnalyticsPage() {
 
                     <div className="space-y-2">
                       <span className="text-sm font-medium">Avg Case Value</span>
-                      <div className="text-2xl font-bold">${(lawyer.avgCaseValue / 1000).toFixed(0)}K</div>
+                      <div className="text-2xl font-bold">
+                        ${(lawyer.avgCaseValue / 1000).toFixed(1)}K
+                      </div>
                       <p className="text-xs text-muted-foreground">Per case average</p>
                     </div>
 
                     <div className="space-y-2">
-                      <span className="text-sm font-medium">Response Time</span>
+                      <span className="text-sm font-medium">Avg Response Time</span>
                       <div className="text-2xl font-bold">{lawyer.responseTime}</div>
-                      <p className="text-xs text-muted-foreground">Average response</p>
+                      <p className="text-xs text-muted-foreground">To client inquiries</p>
                     </div>
                   </div>
                 </CardContent>
@@ -349,219 +400,34 @@ export default function AnalyticsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="clients" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Client Retention</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">94.2%</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+2.1% from last quarter</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Referral Rate</CardTitle>
-                <ThumbsUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">68%</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+8% from last quarter</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Case Duration</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">4.2mo</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingDown className="h-3 w-3" />
-                  <span>-0.8mo improvement</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Client Lifetime Value</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">$45K</div>
-                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+15% from last year</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Client Feedback Analysis */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Client Feedback</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-start gap-4 p-4 border rounded-lg">
-                  <div className="flex items-center gap-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    ))}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">
-                      "Excellent communication throughout the entire process. John kept me informed every step of the
-                      way."
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">- Sarah M. • Property Dispute Case</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4 p-4 border rounded-lg">
-                  <div className="flex items-center gap-1">
-                    {[...Array(4)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    ))}
-                    <Star className="h-4 w-4 text-gray-300" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">
-                      "Professional service and great results. Could improve response time for urgent matters."
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">- Michael R. • Personal Injury Case</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4 p-4 border rounded-lg">
-                  <div className="flex items-center gap-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    ))}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">
-                      "Outstanding legal expertise and client care. Highly recommend to anyone needing legal services."
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">- Jennifer L. • Corporate Law Case</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="market" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Legal Market Trends</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {marketTrends.map((trend, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <Briefcase className="h-5 w-5 text-muted-foreground" />
-                      <span className="font-medium">{trend.category}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-sm font-medium ${trend.growth === "up" ? "text-green-600" : "text-red-600"}`}
-                      >
-                        {trend.trend}
-                      </span>
-                      {trend.growth === "up" ? (
-                        <TrendingUp className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <TrendingDown className="h-4 w-4 text-red-600" />
-                      )}
-                    </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {marketTrends.map((trend, index) => (
+              <Card key={index}>
+                <CardHeader>
+                  <CardTitle className="text-lg">{trend.category}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{trend.trend}</div>
+                  <div className="flex items-center gap-1 mt-2">
+                    {trend.growth === "up" ? (
+                      <>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                        <span className="text-sm text-green-600">Positive trend</span>
+                      </>
+                    ) : (
+                      <>
+                        <TrendingDown className="h-4 w-4 text-red-500" />
+                        <span className="text-sm text-red-600">Needs attention</span>
+                      </>
+                    )}
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Competitive Analysis</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Success Rate vs Market Avg</span>
-                    <Badge className="bg-green-100 text-green-800 border-green-200">+12% Above</Badge>
-                  </div>
-                  <Progress value={89} className="h-2" />
-                  <p className="text-xs text-muted-foreground">Your firm: 89% | Market average: 77%</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Client Satisfaction vs Market</span>
-                    <Badge className="bg-green-100 text-green-800 border-green-200">+0.5 Above</Badge>
-                  </div>
-                  <Progress value={94} className="h-2" />
-                  <p className="text-xs text-muted-foreground">Your firm: 4.7/5 | Market average: 4.2/5</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Response Time vs Market</span>
-                    <Badge className="bg-green-100 text-green-800 border-green-200">35% Faster</Badge>
-                  </div>
-                  <Progress value={75} className="h-2" />
-                  <p className="text-xs text-muted-foreground">Your firm: 2.4h | Market average: 3.7h</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Improvement Recommendations</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
-                    <Award className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-900">Expand Personal Injury Practice</p>
-                      <p className="text-xs text-blue-700">Market showing +15% growth. Consider hiring specialist.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-yellow-50 rounded-lg">
-                    <Clock className="h-5 w-5 text-yellow-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-yellow-900">Improve Response Time</p>
-                      <p className="text-xs text-yellow-700">Some lawyers averaging 3h+. Target: under 2h for all.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
-                    <TrendingUp className="h-5 w-5 text-green-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-green-900">Leverage High Satisfaction</p>
-                      <p className="text-xs text-green-700">4.7/5 rating. Implement referral program to capitalize.</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }

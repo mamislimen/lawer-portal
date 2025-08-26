@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,96 +8,83 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Send, Search, MessageSquare, Users, Clock, Paperclip } from "lucide-react"
+import { Send, Search, MessageSquare, Users, Clock, Paperclip, AlertCircle, Loader2 } from "lucide-react"
+import { useConversations } from "@/hooks/useConversations"
+import { formatDistanceToNow } from "date-fns"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useSession } from "next-auth/react"
+import { CardDescription } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 
-const mockConversations = [
-  {
-    id: 1,
-    client: "John Smith",
-    lastMessage: "Thank you for the consultation. When can we schedule the next meeting?",
-    timestamp: "2024-01-25 14:30",
-    unread: 2,
-    avatar: "JS",
-  },
-  {
-    id: 2,
-    client: "Sarah Johnson",
-    lastMessage: "I've reviewed the contract. Can we discuss the terms tomorrow?",
-    timestamp: "2024-01-25 12:15",
-    unread: 0,
-    avatar: "SJ",
-  },
-  {
-    id: 3,
-    client: "Michael Brown",
-    lastMessage: "The documents have been submitted to the court.",
-    timestamp: "2024-01-24 16:45",
-    unread: 1,
-    avatar: "MB",
-  },
-]
-
-const mockMessages = [
-  {
-    id: 1,
-    sender: "John Smith",
-    content: "Hello, I wanted to follow up on our consultation yesterday.",
-    timestamp: "2024-01-25 14:00",
-    isClient: true,
-  },
-  {
-    id: 2,
-    sender: "You",
-    content: "Hi John, thank you for reaching out. I'm glad we could discuss your case in detail.",
-    timestamp: "2024-01-25 14:05",
-    isClient: false,
-  },
-  {
-    id: 3,
-    sender: "John Smith",
-    content: "I have a few more questions about the timeline. When would be a good time to schedule our next meeting?",
-    timestamp: "2024-01-25 14:10",
-    isClient: true,
-  },
-  {
-    id: 4,
-    sender: "You",
-    content: "I have availability next week. Let me check my calendar and get back to you with some options.",
-    timestamp: "2024-01-25 14:15",
-    isClient: false,
-  },
-  {
-    id: 5,
-    sender: "John Smith",
-    content: "Thank you for the consultation. When can we schedule the next meeting?",
-    timestamp: "2024-01-25 14:30",
-    isClient: true,
-  },
-]
+// No mock data needed - using real data from the backend
 
 export default function MessagesPage() {
-  const [selectedConversation, setSelectedConversation] = useState(mockConversations[0])
   const [newMessage, setNewMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { data: session } = useSession()
+  
+  const {
+    conversations,
+    selectedConversation,
+    setSelectedConversation,
+    messages,
+    loading,
+    error,
+    sendMessage: sendMessageHandler,
+    isConnected,
+    currentUser,
+  } = useConversations() as {
+    conversations: any[]
+    selectedConversation: any
+    setSelectedConversation: (conv: any) => void
+    messages: any[]
+    loading: boolean
+    error: { message: string } | null
+    sendMessage: (content: string, conversationId: string) => Promise<void>
+    isConnected: boolean
+    currentUser: any
+  }
 
-  const filteredConversations = mockConversations.filter((conv) =>
-    conv.client.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Filter conversations based on search term
+  const filteredConversations = conversations.filter((conv: any) => {
+    const otherUser = 
+      conv.user1.id === currentUser?.id ? conv.user2 : conv.user1;
+    return otherUser?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  })
 
-  const sendMessage = () => {
-    if (newMessage.trim()) {
-      // Here you would typically send the message to your backend
-      console.log("Sending message:", newMessage)
-      setNewMessage("")
+  // Scroll to bottom of messages when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!newMessage.trim() || !selectedConversation) return;
+    
+    try {
+      await sendMessageHandler(newMessage, selectedConversation.id);
+      setNewMessage("");
+      
+      // Scroll to bottom after sending a message
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err: any) {
+      console.error("Failed to send message:", err);
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
+      e.preventDefault();
+      handleSendMessage(e);
     }
   }
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
 
   return (
     <div className="space-y-8">
@@ -118,7 +103,9 @@ export default function MessagesPage() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{mockConversations.length}</div>
+            <div className="text-3xl font-bold">
+              {loading ? <Skeleton className="h-8 w-16" /> : conversations.length}
+            </div>
             <p className="text-xs text-muted-foreground">Active chats</p>
           </CardContent>
         </Card>
@@ -126,11 +113,13 @@ export default function MessagesPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Unread Messages</CardTitle>
             <Badge className="bg-red-100 text-red-800 border-red-200">
-              {mockConversations.reduce((sum, conv) => sum + conv.unread, 0)}
+              {loading ? 0 : conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)}
             </Badge>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{mockConversations.reduce((sum, conv) => sum + conv.unread, 0)}</div>
+            <div className="text-3xl font-bold">
+              {loading ? <Skeleton className="h-8 w-16" /> : conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)}
+            </div>
             <p className="text-xs text-muted-foreground">Require attention</p>
           </CardContent>
         </Card>
@@ -140,18 +129,22 @@ export default function MessagesPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{mockConversations.length}</div>
+            <div className="text-3xl font-bold">
+              {loading ? <Skeleton className="h-8 w-16" /> : conversations.length}
+            </div>
             <p className="text-xs text-muted-foreground">Currently messaging</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Response Time</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Connection</CardTitle>
+            <div className={`h-3 w-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">2.5h</div>
-            <p className="text-xs text-muted-foreground">Average response</p>
+            <div className="text-3xl font-bold">
+              {isConnected ? 'Online' : 'Offline'}
+            </div>
+            <p className="text-xs text-muted-foreground">Chat status</p>
           </CardContent>
         </Card>
       </div>
@@ -167,102 +160,219 @@ export default function MessagesPage() {
               <Input
                 placeholder="Search conversations..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={handleSearchChange}
                 className="pl-10"
               />
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[500px]">
-              {filteredConversations.map((conversation) => (
-                <div key={conversation.id}>
-                  <div
-                    className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
-                      selectedConversation.id === conversation.id ? "bg-muted" : ""
-                    }`}
-                    onClick={() => setSelectedConversation(conversation)}
-                  >
-                    <Avatar>
-                      <AvatarImage src="/placeholder.svg" />
-                      <AvatarFallback>{conversation.avatar}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium truncate">{conversation.client}</p>
-                        {conversation.unread > 0 && (
-                          <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">
-                            {conversation.unread}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate">{conversation.lastMessage}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(conversation.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Separator />
-                </div>
-              ))}
-            </ScrollArea>
-          </CardContent>
-        </Card>
-
-        {/* Chat Messages */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <Avatar>
-                <AvatarImage src="/placeholder.svg" />
-                <AvatarFallback>{selectedConversation.avatar}</AvatarFallback>
-              </Avatar>
-              <div>
-                <CardTitle>{selectedConversation.client}</CardTitle>
-                <p className="text-sm text-muted-foreground">Online</p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ScrollArea className="h-[400px] pr-4">
-              <div className="space-y-4">
-                {mockMessages.map((message) => (
-                  <div key={message.id} className={`flex ${message.isClient ? "justify-start" : "justify-end"}`}>
-                    <div
-                      className={`max-w-[70%] rounded-lg p-3 ${
-                        message.isClient ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"
-                      }`}
-                    >
-                      <p className="text-sm">{message.content}</p>
-                      <p
-                        className={`text-xs mt-1 ${
-                          message.isClient ? "text-muted-foreground" : "text-primary-foreground/70"
-                        }`}
-                      >
-                        {new Date(message.timestamp).toLocaleTimeString()}
-                      </p>
+            {loading && !conversations.length ? (
+              <div className="space-y-4 p-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <Skeleton className="h-12 w-12 rounded-full" />
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-full" />
                     </div>
                   </div>
                 ))}
               </div>
-            </ScrollArea>
-
-            {/* Message Input */}
-            <div className="flex items-center gap-2 pt-4 border-t">
-              <Button variant="outline" size="icon">
-                <Paperclip className="h-4 w-4" />
-              </Button>
-              <Input
-                placeholder="Type your message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="flex-1"
-              />
-              <Button onClick={sendMessage} size="icon">
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
+            ) : (
+              <ScrollArea className="h-[500px]">
+                <div>
+                  {filteredConversations.map((conversation) => {
+                    const otherUser = 
+                      conversation.user1.id === currentUser?.id 
+                        ? conversation.user2 
+                        : conversation.user1;
+                    const lastMessage = conversation.lastMessage;
+                    
+                    return (
+                      <div key={conversation.id}>
+                        <div
+                          className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                            selectedConversation?.id === conversation.id ? "bg-muted" : ""
+                          }`}
+                          onClick={() => setSelectedConversation(conversation)}
+                        >
+                          <Avatar>
+                            <AvatarImage src={otherUser.image || ''} alt={otherUser.name || ''} />
+                            <AvatarFallback>
+                              {otherUser.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'U'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium truncate">{otherUser.name || 'Unknown User'}</p>
+                              {conversation.unreadCount > 0 && (
+                                <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">
+                                  {conversation.unreadCount}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {lastMessage?.content || 'No messages yet'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {lastMessage ? formatDistanceToNow(new Date(lastMessage.createdAt), { addSuffix: true }) : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <Separator />
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            )}
           </CardContent>
+        </Card>
+
+        {/* Chat Area */}
+        <Card className="lg:col-span-2 flex flex-col">
+          {loading ? (
+            <div className="flex h-[600px] flex-col items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">Loading messages...</p>
+            </div>
+          ) : error ? (
+            <div className="flex h-[600px] flex-col items-center justify-center p-6 text-center">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+              <h3 className="mt-4 text-lg font-medium">Error loading messages</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {error.message || 'Failed to load messages. Please try again.'}
+              </p>
+            </div>
+          ) : selectedConversation ? (
+            <>
+              <CardHeader className="border-b">
+                <div className="flex items-center gap-3">
+                  <Avatar>
+                    <AvatarImage 
+                      src={selectedConversation.user1.id === currentUser?.id 
+                        ? selectedConversation.user2.image || ''
+                        : selectedConversation.user1.image || ''} 
+                      alt={selectedConversation.user1.id === currentUser?.id 
+                        ? selectedConversation.user2.name || 'User'
+                        : selectedConversation.user1.name || 'User'}
+                    />
+                    <AvatarFallback>
+                      {selectedConversation.user1.id === currentUser?.id 
+                        ? selectedConversation.user2.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'U'
+                        : selectedConversation.user1.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle>
+                      {selectedConversation.user1.id === currentUser?.id 
+                        ? selectedConversation.user2.name || 'Unknown User'
+                        : selectedConversation.user1.name || 'Unknown User'}
+                    </CardTitle>
+                    <CardDescription className="text-sm">
+                      {isConnected ? 'Online' : 'Offline'}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 p-0 overflow-hidden">
+                <ScrollArea className="h-[500px] p-6">
+                  <div className="space-y-6">
+                    {messages.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                        <MessageSquare className="h-12 w-12 mb-2 opacity-20" />
+                        <p>No messages yet</p>
+                        <p className="text-sm">Send a message to start the conversation</p>
+                      </div>
+                    ) : (
+                      messages.map((message) => {
+                        const isCurrentUser = message.sender?.id === currentUser?.id;
+                        const sender = isCurrentUser 
+                          ? currentUser 
+                          : (selectedConversation.user1.id === currentUser?.id 
+                              ? selectedConversation.user2 
+                              : selectedConversation.user1);
+                        
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!isCurrentUser && (
+                              <Avatar className="h-8 w-8 mr-2 mt-1">
+                                <AvatarImage src={sender?.image || ''} alt={sender?.name || ''} />
+                                <AvatarFallback>
+                                  {sender?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'U'}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <div
+                              className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                                isCurrentUser
+                                  ? 'bg-primary text-primary-foreground rounded-br-none'
+                                  : 'bg-muted rounded-bl-none'
+                              }`}
+                            >
+                              {!isCurrentUser && (
+                                <p className="font-medium text-xs text-muted-foreground mb-1">
+                                  {sender?.name || 'Unknown User'}
+                                </p>
+                              )}
+                              <p>{message.content}</p>
+                              <p
+                                className={`text-xs mt-1 text-right ${
+                                  isCurrentUser ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                                }`}
+                              >
+                                {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                </ScrollArea>
+              </CardContent>
+              <div className="border-t p-4">
+                <div className="relative">
+                  <Textarea
+                    placeholder="Type a message..."
+                    className="min-h-[60px] resize-none pr-12"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    disabled={!isConnected}
+                  />
+                  <Button
+                    size="icon"
+                    className="absolute right-2 bottom-2 h-8 w-8"
+                    onClick={handleSendMessage}
+                    disabled={!newMessage.trim() || !isConnected}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                  {!isConnected && (
+                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+                      <div className="flex items-center text-sm text-muted-foreground">
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        <span>Connecting to chat...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex h-[600px] flex-col items-center justify-center p-6 text-center">
+              <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-medium">No conversation selected</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Select a conversation from the list or start a new one
+              </p>
+            </div>
+          )}
         </Card>
       </div>
     </div>

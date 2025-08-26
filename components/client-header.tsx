@@ -32,65 +32,68 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Link from "next/link"
 import { useState } from "react"
 import { usePathname } from "next/navigation"
-import { LanguageSwitcher } from "@/components/language-switcher"
-import { useLanguage } from "@/contexts/language-context"
 import { cn } from "@/lib/utils"
+
+type NavItem = {
+  href: string
+  icon: any
+  label: string
+}
 
 export function ClientHeader() {
   const [isSheetOpen, setIsSheetOpen] = useState(false)
-  const { t } = useLanguage()
   const pathname = usePathname()
 
-  const navItems = [
+  const navItems: NavItem[] = [
     {
-      name: t("nav.dashboard"),
       href: "/client",
       icon: LayoutDashboard,
+      label: "Dashboard"
     },
     {
-      name: t("nav.myCases"),
       href: "/client/cases",
       icon: Briefcase,
+      label: "My Cases"
     },
     {
-      name: t("nav.videoCalls"),
       href: "/client/video-calls",
       icon: Video,
+      label: "Video Calls"
     },
     {
-      name: t("nav.messages"),
       href: "/client/messages",
       icon: MessageSquare,
+      label: "Messages"
     },
     {
-      name: t("nav.appointments"),
       href: "/client/appointments",
       icon: Calendar,
+      label: "Appointments"
     },
     {
-      name: t("nav.documents"),
       href: "/client/documents",
       icon: FileText,
+      label: "Documents"
     },
     {
-      name: t("nav.analytics"),
       href: "/client/analytics",
       icon: BarChart3,
+      label: "Analytics"
     },
     {
-      name: t("nav.subscription"),
       href: "/client/subscription",
       icon: Crown,
+      label: "Subscription"
     },
     {
-      name: t("nav.billing"),
       href: "/client/billing",
       icon: CreditCard,
+      label: "Billing"
     },
     {
-      name: t("nav.profile"),
       href: "/client/profile",
       icon: User,
+      label: "Profile"
     },
   ]
 
@@ -101,7 +104,7 @@ export function ClientHeader() {
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="shrink-0 lg:hidden text-black hover:gradient-button-outline">
             <Menu className="h-5 w-5" />
-            <span className="sr-only">{t("ui.toggleNavigation")}</span>
+            <span className="sr-only">Toggle navigation</span>
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="flex flex-col w-80 bg-white p-0">
@@ -119,7 +122,7 @@ export function ClientHeader() {
               const isActive = pathname === item.href
               return (
                 <Link
-                  key={item.name}
+                  key={item.href}
                   href={item.href}
                   onClick={() => setIsSheetOpen(false)}
                   className={cn(
@@ -130,7 +133,7 @@ export function ClientHeader() {
                   )}
                 >
                   <item.icon className="h-5 w-5" />
-                  {item.name}
+                  {item.label}
                 </Link>
               )
             })}
@@ -165,7 +168,7 @@ export function ClientHeader() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
           <Input
             type="search"
-            placeholder={t("ui.searchCasesDocuments")}
+            placeholder="Search cases, documents..."
             className="w-full pl-10 pr-4 py-2 bg-gray-50 border-gray-200 focus:border-gray-400 text-black placeholder:text-gray-500 text-sm"
           />
         </form>
@@ -173,11 +176,6 @@ export function ClientHeader() {
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-1 lg:gap-2">
-        {/* Language Switcher - Hidden on small screens */}
-        <div className="hidden sm:block">
-          <LanguageSwitcher />
-        </div>
-
         {/* Notifications */}
         <Button
           variant="ghost"
@@ -188,7 +186,7 @@ export function ClientHeader() {
           <span className="absolute -top-1 -right-1 h-2 w-2 lg:h-3 lg:w-3 bg-black rounded-full text-[8px] lg:text-[10px] font-bold text-white flex items-center justify-center">
             <span className="hidden lg:inline">2</span>
           </span>
-          <span className="sr-only">{t("common.notifications")}</span>
+          <span className="sr-only">Notifications</span>
         </Button>
 
         {/* User Menu */}
@@ -199,7 +197,7 @@ export function ClientHeader() {
               className="relative h-8 w-8 lg:h-10 lg:w-10 rounded-full hover:gradient-button-outline"
             >
               <Avatar className="h-8 w-8 lg:h-10 lg:w-10">
-                <AvatarImage src="/placeholder-user.jpg" alt={t("ui.userAvatar")} />
+                <AvatarImage src="/placeholder-user.jpg" alt="User avatar" />
                 <AvatarFallback className="gradient-button text-white font-semibold text-xs lg:text-sm">
                   JS
                 </AvatarFallback>
@@ -215,24 +213,18 @@ export function ClientHeader() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-gray-200" />
 
-            {/* Language Switcher in mobile menu */}
-            <div className="sm:hidden px-2 py-1">
-              <LanguageSwitcher />
-            </div>
-            <DropdownMenuSeparator className="bg-gray-200 sm:hidden" />
-
             <DropdownMenuItem className="cursor-pointer text-gray-700 hover:bg-gray-50">
               <User className="mr-2 h-4 w-4" />
-              <span>{t("nav.profile")}</span>
+              <span>Profile</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer text-gray-700 hover:bg-gray-50">
               <Settings className="mr-2 h-4 w-4" />
-              <span>{t("nav.settings")}</span>
+              <span>Settings</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-gray-200" />
             <DropdownMenuItem className="cursor-pointer text-red-600 hover:bg-red-50 focus:text-red-600">
               <LogOut className="mr-2 h-4 w-4" />
-              <span>{t("common.logout")}</span>
+              <span>Logout</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -13,17 +13,33 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  type        NotificationType @default(GENERAL)
+  createdAt   DateTime         @default(now())
+  isRead      Boolean?         @default(false)
+  referenceId String?
+  updatedAt   DateTime?        @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@index([userId])
 }
 
 model Session {
@@ -35,35 +51,44 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  role          UserRole  @default(CLIENT)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  accounts      Account[]
-  sessions      Session[]
-  lawyerProfile LawyerProfile?
-  clientProfile ClientProfile?
-
-  lawyerCases   Case[] @relation("LawyerCases")
-  clientCases   Case[] @relation("ClientCases")
-
-  sentMessages     Message[] @relation("SentMessages")
-  receivedMessages Message[] @relation("ReceivedMessages")
-  conversations1 Conversation[] @relation("User1Conversations")
-  conversations2 Conversation[] @relation("User2Conversations")
-
-  hostedCalls  VideoCall[] @relation("HostedCalls")
-  joinedCalls  VideoCall[] @relation("JoinedCalls")
-
-  uploadedDocuments Document[]
-
-  notifications Notification[]
+  id                    String                @id @default(cuid())
+  name                  String?
+  email                 String               @unique
+  emailVerified         DateTime?
+  image                 String?
+  password              String?
+  role                  UserRole             @default(CLIENT)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  stripeAccountId       String?
+  phone                 String?
+  address               String?
+  dateOfBirth           DateTime?
+  occupation            String?
+  accounts              Account[]
+  clientAppointments    Appointment[]        @relation("ClientAppointments")
+  lawyerAppointments    Appointment[]        @relation("LawyerAppointments")
+  clientCases           Case[]               @relation("ClientCases")
+  lawyerCases           Case[]               @relation("LawyerCases")
+  clientProfile         ClientProfile?       @relation("UserClientProfile")
+  assignedClients       ClientProfile[]      @relation("LawyerAssignedClients")
+  conversations1        Conversation[]       @relation("User1Conversations")
+  conversations2        Conversation[]       @relation("User2Conversations")
+  uploadedDocuments     Document[]
+  clientInvoices        Invoice[]            @relation("ClientInvoices")
+  lawyerInvoices        Invoice[]            @relation("LawyerInvoices")
+  lawyerProfile         LawyerProfile?
+  receivedMessages      Message[]            @relation("ReceivedMessages")
+  sentMessages          Message[]            @relation("SentMessages")
+  notifications         Notification[]
+  notificationPrefs     NotificationPreferences? @relation(fields: [notificationPrefsId], references: [id])
+  notificationPrefsId   String?              @unique
+  services              Service[]
+  sessions              Session[]
+  approvedTimeEntries   TimeEntry[]          @relation("ApprovedTimeEntries")
+  timeEntries           TimeEntry[]          @relation("LawyerTimeEntries")
+  hostedCalls           VideoCall[]          @relation("HostedCalls")
+  joinedCalls           VideoCall[]          @relation("JoinedCalls")
 }
 
 model VerificationToken {
@@ -74,6 +99,18 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model NotificationPreferences {
+  id                    String   @id @default(cuid())
+  email                 Boolean  @default(true)
+  sms                   Boolean  @default(false)
+  caseUpdates           Boolean  @default(true)
+  appointmentReminders  Boolean  @default(true)
+  reminderTime          String   @default("24h")
+  user                  User?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
 model LawyerProfile {
   id             String   @id @default(cuid())
   userId         String   @unique
@@ -82,37 +119,62 @@ model LawyerProfile {
   experience     Int
   hourlyRate     Float?
   bio            String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Appointment {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  notes       String?
+  lawyerId    String
+  clientId    String
+  caseId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  type        String
+  status      String   @default("PENDING")
+  case        Case?    @relation(fields: [caseId], references: [id])
+  client      User     @relation("ClientAppointments", fields: [clientId], references: [id])
+  lawyer      User     @relation("LawyerAppointments", fields: [lawyerId], references: [id])
 }
 
 model ClientProfile {
-  id      String @id @default(cuid())
-  userId  String @unique
-  phone   String?
-  address String?
-  company String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                     String  @id @default(cuid())
+  userId                 String  @unique
+  phone                  String?
+  address                String?
+  company                String?
+  emergencyContactName   String?
+  emergencyContactPhone  String?
+  emergencyContactRelation String?
+  assignedLawyerId       String?
+  assignedLawyer         User?   @relation("LawyerAssignedClients", fields: [assignedLawyerId], references: [id])
+  user                   User    @relation("UserClientProfile", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Case {
-  id          String     @id @default(cuid())
-  title       String
-  description String
-  status      CaseStatus @default(OPEN)
-  priority    Priority   @default(MEDIUM)
-  lawyerId    String
-  clientId    String
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  dueDate     DateTime?
-
-  lawyer     User        @relation("LawyerCases", fields: [lawyerId], references: [id])
-  client     User        @relation("ClientCases", fields: [clientId], references: [id])
-  messages   Message[]
-  documents  Document[]
-  videoCalls VideoCall[]
+  id           String        @id @default(cuid())
+  title        String
+  description  String
+  status       CaseStatus    @default(OPEN)
+  priority     Priority      @default(MEDIUM)
+  lawyerId     String
+  clientId     String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  dueDate      DateTime?
+  appointments Appointment[]
+  client       User          @relation("ClientCases", fields: [clientId], references: [id])
+  lawyer       User          @relation("LawyerCases", fields: [lawyerId], references: [id])
+  documents    Document[]
+  invoices     Invoice[]
+  messages     Message[]
+  timeEntries  TimeEntry[]
+  videoCalls   VideoCall[]
 
   @@index([lawyerId])
   @@index([clientId])
@@ -122,10 +184,9 @@ model Case {
 model Conversation {
   id        String    @id @default(cuid())
   title     String?
+  createdAt DateTime  @default(now())
   user1Id   String
   user2Id   String
-  createdAt DateTime  @default(now())
-
   user1     User      @relation("User1Conversations", fields: [user1Id], references: [id])
   user2     User      @relation("User2Conversations", fields: [user2Id], references: [id])
   messages  Message[]
@@ -135,22 +196,21 @@ model Conversation {
 }
 
 model Message {
-  id             String      @id @default(cuid())
+  id             String       @id @default(cuid())
   content        String
+  read           Boolean      @default(false)
+  readAt         DateTime?
   senderId       String
   receiverId     String
-  conversationId String
   caseId         String?
-  type           MessageType @default(TEXT)
-  createdAt      DateTime    @default(now())
-  readAt         DateTime?
-  seen           Boolean  @default(false)
-
-
-  sender       User        @relation("SentMessages", fields: [senderId], references: [id])
-  receiver     User        @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  case         Case?       @relation(fields: [caseId], references: [id])
-  conversation Conversation @relation(fields: [conversationId], references: [id])
+  type           MessageType  @default(TEXT)
+  createdAt      DateTime     @default(now())
+  conversationId String
+  seen           Boolean      @default(false)
+  case           Case?        @relation(fields: [caseId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  receiver       User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
 
   @@index([senderId])
   @@index([receiverId])
@@ -160,24 +220,23 @@ model Message {
 }
 
 model VideoCall {
-  id              String          @id @default(cuid())
-  title           String
-  description     String?
-  hostId          String
-  participantId   String
-  caseId          String?
-  status          VideoCallStatus @default(SCHEDULED)
-  scheduledAt     DateTime
-  startedAt       DateTime?
-  endedAt         DateTime?
-  duration        Int?
-  recordingUrl    String?
-  agoraChannelName String @unique
-  createdAt       DateTime        @default(now())
-
-  host        User  @relation("HostedCalls", fields: [hostId], references: [id])
-  participant User  @relation("JoinedCalls", fields: [participantId], references: [id])
-  case        Case? @relation(fields: [caseId], references: [id])
+  id               String          @id @default(cuid())
+  title            String
+  description      String?
+  hostId           String
+  participantId    String
+  caseId           String?
+  status           VideoCallStatus @default(SCHEDULED)
+  scheduledAt      DateTime
+  startedAt        DateTime?
+  endedAt          DateTime?
+  duration         Int?
+  recordingUrl     String?
+  agoraChannelName String          @unique
+  createdAt        DateTime        @default(now())
+  case             Case?           @relation(fields: [caseId], references: [id])
+  host             User            @relation("HostedCalls", fields: [hostId], references: [id])
+  participant      User            @relation("JoinedCalls", fields: [participantId], references: [id])
 
   @@index([hostId])
   @@index([participantId])
@@ -186,39 +245,134 @@ model VideoCall {
 }
 
 model Document {
-  id            String       @id @default(cuid())
-  filename      String
-  originalName  String
-  fileSize      Int
-  mimeType      String
-  url           String
-  uploaderId    String
-  caseId        String?
-  type          DocumentType @default(OTHER)
-  createdAt     DateTime     @default(now())
-
-  uploader User  @relation(fields: [uploaderId], references: [id])
-  case     Case? @relation(fields: [caseId], references: [id])
+  id           String       @id @default(cuid())
+  filename     String
+  originalName String
+  fileSize     Int
+  mimeType     String
+  url          String
+  uploaderId   String
+  caseId       String?
+  type         DocumentType @default(OTHER)
+  createdAt    DateTime     @default(now())
+  case         Case?        @relation(fields: [caseId], references: [id])
+  uploader     User         @relation(fields: [uploaderId], references: [id])
 
   @@index([uploaderId])
   @@index([caseId])
   @@index([type])
 }
 
-model Notification {
-  id        String           @id @default(cuid())
-  userId    String
-  title     String
-  message   String
-  type      NotificationType @default(INFO)
-  read      Boolean          @default(false)
-  createdAt DateTime         @default(now())
+model Service {
+  id            String        @id @default(cuid())
+  name          String
+  description   String
+  price         Float
+  duration      String
+  category      String
+  status        ServiceStatus @default(ACTIVE)
+  lawyerId      String
+  clientsServed Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lawyer        User          @relation(fields: [lawyerId], references: [id])
 
-  user User @relation(fields: [userId], references: [id])
+  @@index([lawyerId])
+  @@index([status])
+}
 
-  @@index([userId])
-  @@index([read])
-  @@index([createdAt])
+model Invoice {
+  id                    String        @id @default(cuid())
+  invoiceNumber         String        @unique
+  caseId                String
+  clientId              String
+  lawyerId              String
+  issueDate             DateTime
+  dueDate               DateTime
+  status                InvoiceStatus @default(DRAFT)
+  subtotal              Float
+  tax                   Float         @default(0)
+  discount              Float         @default(0)
+  total                 Float
+  notes                 String?
+  terms                 String?
+  stripePaymentIntentId String?
+  stripeInvoiceId       String?
+  paidAt                DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  case                  Case          @relation(fields: [caseId], references: [id])
+  client                User          @relation("ClientInvoices", fields: [clientId], references: [id])
+  lawyer                User          @relation("LawyerInvoices", fields: [lawyerId], references: [id])
+  items                 InvoiceItem[]
+  payments              Payment[]
+
+  @@index([caseId])
+  @@index([clientId])
+  @@index([lawyerId])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id          String     @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Float      @default(1)
+  unitPrice   Float
+  amount      Float
+  timeEntryId String?    @unique
+  createdAt   DateTime   @default(now())
+  invoice     Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  timeEntry   TimeEntry? @relation(fields: [timeEntryId], references: [id])
+}
+
+model TimeEntry {
+  id           String          @id @default(cuid())
+  caseId       String
+  lawyerId     String
+  date         DateTime
+  description  String
+  hours        Float
+  rate         Float
+  amount       Float
+  status       TimeEntryStatus @default(PENDING)
+  approvedAt   DateTime?
+  approvedById String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  invoiceItem  InvoiceItem?
+  approvedBy   User?           @relation("ApprovedTimeEntries", fields: [approvedById], references: [id])
+  case         Case            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  lawyer       User            @relation("LawyerTimeEntries", fields: [lawyerId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([lawyerId])
+  @@index([status])
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  invoiceId             String
+  amount                Float
+  paymentDate           DateTime
+  paymentMethod         PaymentMethod
+  transactionId         String?
+  stripePaymentIntentId String?
+  notes                 String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  invoice               Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+enum NotificationType {
+  APPOINTMENT_CREATED
+  APPOINTMENT_UPDATED
+  APPOINTMENT_CANCELLED
+  DOCUMENT_UPLOADED
+  PAYMENT_RECEIVED
+  GENERAL
 }
 
 enum UserRole {
@@ -255,6 +409,22 @@ enum VideoCallStatus {
   CANCELLED
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentType {
+  CONSULTATION
+  CASE_REVIEW
+  COURT_APPEARANCE
+  MEETING
+  OTHER
+}
+
 enum DocumentType {
   CONTRACT
   EVIDENCE
@@ -263,12 +433,31 @@ enum DocumentType {
   OTHER
 }
 
-enum NotificationType {
-  INFO
-  SUCCESS
-  WARNING
-  ERROR
-  MESSAGE
-  VIDEO_CALL
-  DOCUMENT
+enum ServiceStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+  PARTIALLY_PAID
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  BANK_TRANSFER
+  STRIPE
+  PAYPAL
+  OTHER
+}
+
+enum TimeEntryStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  BILLED
 }

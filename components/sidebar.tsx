@@ -13,51 +13,46 @@ import {
   Settings,
   Scale,
   BarChart3,
+  FileText,
 } from "lucide-react"
-import { useLanguage } from "@/contexts/language-context"
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { t } = useLanguage()
 
   const navItems = [
     {
-      name: t("nav.dashboard"),
       href: "/dashboard",
       icon: LayoutDashboard,
     },
     {
-      name: t("nav.clients"),
       href: "/dashboard/clients",
       icon: Users,
     },
     {
-      name: t("nav.cases"),
       href: "/dashboard/cases",
       icon: Briefcase,
     },
     {
-      name: t("nav.services"),
       href: "/dashboard/services",
       icon: Handshake,
     },
     {
-      name: t("nav.videoCalls"),
       href: "/dashboard/video-calls",
       icon: Video,
     },
     {
-      name: t("nav.messages"),
       href: "/dashboard/messages",
       icon: MessageSquare,
     },
     {
-      name: t("nav.analytics"),
+      href: "/dashboard/documents",
+      icon: FileText,
+    },
+    {
       href: "/dashboard/analytics",
       icon: BarChart3,
     },
     {
-      name: t("nav.settings"),
       href: "/dashboard/settings",
       icon: Settings,
     },
@@ -78,7 +73,7 @@ export function Sidebar() {
           const isActive = pathname === item.href
           return (
             <Link
-              key={item.name}
+              key={item.href}
               href={item.href}
               className={cn(
                 "flex items-center gap-2 lg:gap-3 rounded-xl px-3 lg:px-4 py-2 lg:py-3 text-sm font-medium transition-all duration-200",
@@ -88,7 +83,7 @@ export function Sidebar() {
               )}
             >
               <item.icon className="h-4 w-4 lg:h-5 lg:w-5 flex-shrink-0" />
-              <span className="truncate">{item.name}</span>
+              <span className="truncate">{item.href}</span>
             </Link>
           )
         })}

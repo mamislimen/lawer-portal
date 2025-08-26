@@ -1,0 +1,19 @@
+{
+  "Header": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "clients": "Clients",
+      "cases": "Cases",
+      "documents": "Documents",
+      "calendar": "Calendar",
+      "billing": "Billing",
+      "reports": "Reports",
+      "settings": "Settings"
+    },
+    "userMenu": {
+      "profile": "Profile",
+      "settings": "Settings",
+      "signOut": "Sign out"
+    }
+  }
+}

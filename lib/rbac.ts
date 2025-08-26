@@ -1,9 +1,8 @@
-import { getServerSession } from "next-auth/next";
+import { getServerSession } from 'next-auth'; // ✅ fixed import
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
 
-export type UserRole = "lawyer" | "client" | "admin"
-export type SubscriptionTier = "basic" | "premium" | "enterprise"
+export type UserRole = "LAWYER" | "CLIENT" | "ADMIN"
 
 export async function requireAuth(allowedRoles?: UserRole[]) {
   const session = await getServerSession(authOptions)
@@ -21,7 +20,6 @@ export async function requireAuth(allowedRoles?: UserRole[]) {
 
 export function hasPermission(
   userRole: UserRole,
-  subscriptionTier: SubscriptionTier,
   requiredPermission: string,
 ): boolean {
   const permissions = {
@@ -31,9 +29,9 @@ export function hasPermission(
   }
 
   const rolePermissions = {
-    client: permissions[subscriptionTier] || permissions.basic,
-    lawyer: ["*"], // Lawyers have all permissions
-    admin: ["*"], // Admins have all permissions
+    CLIENT: permissions.basic,
+    LAWYER: ["*"], // Lawyers have all permissions
+    ADMIN: ["*"], // Admins have all permissions
   }
 
   const userPermissions = rolePermissions[userRole] || []

@@ -7,24 +7,22 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Check, Crown, Star, Zap, Shield, Phone, Clock, Users } from "lucide-react"
-import { useLanguage } from "@/contexts/language-context"
 
 export default function ClientSubscriptionPage() {
   const [currentPlan, setCurrentPlan] = useState("premium")
-  const { t } = useLanguage()
 
   const plans = [
     {
       id: "basic",
-      name: t("subscription.basicClient"),
-      price: t("subscription.free"),
-      description: t("subscription.essentialServices"),
+      name: "Basic Client",
+      price: "Free",
+      description: "Essential legal services",
       features: [
-        t("subscription.caseStatusUpdates"),
-        t("subscription.documentAccess"),
-        t("subscription.emailCommunication"),
-        t("nav.appointments") + " " + t("subscription.priorityScheduling").toLowerCase(),
-        "Mobile app access",
+        "Case status updates",
+        "Document access",
+        "Email communication",
+        "Basic appointment scheduling",
+        "Mobile app access"
       ],
       icon: Users,
       color: "text-gray-600",
@@ -32,17 +30,17 @@ export default function ClientSubscriptionPage() {
     },
     {
       id: "premium",
-      name: t("subscription.premiumClient"),
+      name: "Premium Client",
       price: "$29",
-      period: t("subscription.perMonth"),
-      description: t("subscription.enhancedServices"),
+      period: "per month",
+      description: "Enhanced legal services",
       features: [
-        t("subscription.everythingInBasic"),
-        "2 " + t("time.hours") + " " + t("subscription.videoConsultations") + t("subscription.perMonth"),
-        t("subscription.documentUpload"),
-        t("subscription.priorityScheduling"),
-        t("subscription.advancedInsights"),
-        t("subscription.prioritySupport"),
+        "Everything in Basic",
+        "2 hours video consultations per month",
+        "Document upload and storage",
+        "Priority scheduling",
+        "Advanced case insights",
+        "Priority support"
       ],
       icon: Star,
       color: "text-blue-600",
@@ -50,212 +48,167 @@ export default function ClientSubscriptionPage() {
       popular: true,
     },
     {
-      id: "vip",
-      name: t("subscription.vipClient"),
-      price: "$99",
-      period: t("subscription.perMonth"),
-      description: t("subscription.premiumServices"),
+      id: "enterprise",
+      name: "Enterprise",
+      price: "Custom",
+      description: "Dedicated legal services",
       features: [
-        t("subscription.everythingInPremium"),
-        t("subscription.unlimitedVideo"),
-        t("subscription.legalHotline"),
-        t("subscription.dedicatedManager"),
-        "Expedited services",
-        "Concierge legal services",
+        "Everything in Premium",
+        "Unlimited video consultations",
+        "Dedicated case manager",
+        "24/7 emergency support",
+        "Custom integrations",
+        "Team access"
       ],
-      icon: Crown,
+      icon: Zap,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
-    },
+    }
   ]
 
-  const addOns = [
+  const features = [
     {
-      name: t("subscription.emergencySupport"),
-      price: "$19" + t("subscription.perMonth"),
-      description: t("subscription.emergencyDescription"),
-      icon: Phone,
+      name: "Document Storage",
+      basic: "5GB",
+      premium: "50GB",
+      enterprise: "Unlimited"
     },
     {
-      name: t("subscription.documentReviewService"),
-      price: "$39" + t("subscription.perMonth"),
-      description: t("subscription.documentReviewDescription"),
-      icon: Shield,
+      name: "Video Consultations",
+      basic: "Not included",
+      premium: "2 hours/month",
+      enterprise: "Unlimited"
     },
     {
-      name: t("subscription.extendedVideoTime"),
-      price: "$15" + t("subscription.perMonth"),
-      description: t("subscription.extendedVideoDescription"),
-      icon: Clock,
+      name: "Response Time",
+      basic: "48 hours",
+      premium: "12 hours",
+      enterprise: "2 hours"
     },
+    {
+      name: "Priority Support",
+      basic: false,
+      premium: true,
+      enterprise: true
+    },
+    {
+      name: "Dedicated Manager",
+      basic: false,
+      premium: false,
+      enterprise: true
+    }
   ]
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-4xl font-bold tracking-tight">{t("subscription.title")}</h1>
-        <p className="text-muted-foreground text-lg">{t("subscription.subtitle")}</p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="text-center mb-12">
+        <h1 className="text-3xl font-bold mb-4">Choose Your Plan</h1>
+        <p className="text-gray-600 max-w-2xl mx-auto">
+          Select the plan that best fits your legal needs. Upgrade, downgrade, or cancel anytime.
+        </p>
       </div>
 
-      {/* Current Plan Status */}
-      <Card className="border-2 border-blue-200 bg-blue-50/50">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 bg-blue-600 rounded-full flex items-center justify-center">
-                <Star className="h-6 w-6 text-white" />
+      <div className="grid md:grid-cols-3 gap-8 mb-12">
+        {plans.map((plan) => (
+          <div key={plan.id} className="relative">
+            {plan.popular && (
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                <Badge className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
+                  Most Popular
+                </Badge>
               </div>
-              <div>
-                <CardTitle className="text-xl">{t("subscription.premiumClient")} Plan</CardTitle>
-                <p className="text-sm text-muted-foreground">{t("subscription.currentPlan")}</p>
-              </div>
-            </div>
-            <Badge className="bg-blue-100 text-blue-800 border-blue-200">{t("subscription.active")}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{t("subscription.videoHoursUsed")}</span>
-                <span className="text-sm text-muted-foreground">1.5h / 2h</span>
-              </div>
-              <Progress value={75} className="h-2" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{t("subscription.prioritySupport")}</span>
-                <span className="text-sm text-green-600">Available</span>
-              </div>
-              <Progress value={100} className="h-2" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{t("subscription.nextBilling")}</span>
-                <span className="text-sm text-muted-foreground">Feb 15, 2024</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Subscription Plans */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {plans.map((plan) => {
-          const Icon = plan.icon
-          const isCurrentPlan = currentPlan === plan.id
-
-          return (
-            <Card
-              key={plan.id}
-              className={`relative border-2 transition-all duration-200 hover:shadow-lg ${
-                plan.popular ? "border-blue-200 shadow-md" : "border-border"
-              } ${isCurrentPlan ? "ring-2 ring-blue-500" : ""}`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <Badge className="bg-blue-600 text-white">{t("subscription.mostPopular")}</Badge>
+            )}
+            <Card className={`h-full flex flex-col ${plan.popular ? 'border-2 border-blue-500' : ''}`}>
+              <CardHeader className={`${plan.bgColor} rounded-t-lg`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <plan.icon className={`h-6 w-6 ${plan.color}`} />
+                    <CardTitle className={`text-lg ${plan.color}`}>
+                      {plan.name}
+                    </CardTitle>
+                  </div>
+                  {plan.id === currentPlan && (
+                    <Badge className="bg-green-100 text-green-800">Current Plan</Badge>
+                  )}
                 </div>
-              )}
-
-              <CardHeader className="text-center">
-                <div className={`mx-auto h-16 w-16 rounded-full ${plan.bgColor} flex items-center justify-center mb-4`}>
-                  <Icon className={`h-8 w-8 ${plan.color}`} />
+                <div className="mt-4">
+                  <div className="text-3xl font-bold">
+                    {plan.price}{plan.period && <span className="text-sm font-normal text-gray-500">/{plan.period}</span>}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">{plan.description}</p>
                 </div>
-                <CardTitle className="text-xl">{plan.name}</CardTitle>
-                <div className="text-3xl font-bold">
-                  {plan.price}
-                  {plan.period && <span className="text-lg font-normal text-muted-foreground">{plan.period}</span>}
-                </div>
-                <p className="text-sm text-muted-foreground">{plan.description}</p>
               </CardHeader>
-
-              <CardContent className="space-y-4">
-                <ul className="space-y-3">
-                  {plan.features.map((feature, index) => (
-                    <li key={index} className="flex items-center gap-3">
-                      <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
+              <CardContent className="pt-6 flex-1 flex flex-col">
+                <ul className="space-y-3 mb-6">
+                  {plan.features.map((feature, i) => (
+                    <li key={i} className="flex items-start">
+                      <Check className="h-4 w-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
                       <span className="text-sm">{feature}</span>
                     </li>
                   ))}
                 </ul>
-
-                <Separator />
-
-                <Button className="w-full" variant={isCurrentPlan ? "outline" : "default"} disabled={isCurrentPlan}>
-                  {isCurrentPlan ? t("subscription.currentPlanBadge") : `${t("subscription.upgrade")} ${plan.name}`}
-                </Button>
+                <div className="mt-auto pt-4">
+                  <Button 
+                    className={`w-full ${plan.id === currentPlan ? 'bg-gray-300 hover:bg-gray-400' : ''}`}
+                    disabled={plan.id === currentPlan}
+                  >
+                    {plan.id === currentPlan ? 'Current Plan' : 'Get Started'}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
-          )
-        })}
+          </div>
+        ))}
       </div>
 
-      {/* Add-on Services */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
-            {t("subscription.additionalServices")}
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">{t("subscription.enhanceSubscription")}</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            {addOns.map((addon, index) => {
-              const Icon = addon.icon
-              return (
-                <div key={index} className="flex items-start gap-4 p-4 border rounded-lg">
-                  <div className="h-10 w-10 bg-muted rounded-full flex items-center justify-center flex-shrink-0">
-                    <Icon className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-medium">{addon.name}</h3>
-                      <span className="text-sm font-semibold">{addon.price}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{addon.description}</p>
-                    <Button size="sm" variant="outline" className="w-full bg-transparent">
-                      {t("subscription.addService")}
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-white rounded-xl shadow-sm border p-6 mb-12">
+        <h2 className="text-xl font-semibold mb-6">Plan Comparison</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-3 px-4 w-1/3">Features</th>
+                <th className="text-center py-3 px-4 w-1/4">Basic</th>
+                <th className="text-center py-3 px-4 w-1/4">Premium</th>
+                <th className="text-center py-3 px-4 w-1/4">Enterprise</th>
+              </tr>
+            </thead>
+            <tbody>
+              {features.map((feature, i) => (
+                <tr key={i} className={i % 2 === 0 ? 'bg-gray-50' : ''}>
+                  <td className="py-3 px-4">{feature.name}</td>
+                  <td className="text-center py-3 px-4">
+                    {typeof feature.basic === 'boolean' ? 
+                      (feature.basic ? <Check className="h-4 w-4 text-green-500 mx-auto" /> : '—') : 
+                      feature.basic}
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    {typeof feature.premium === 'boolean' ? 
+                      (feature.premium ? <Check className="h-4 w-4 text-green-500 mx-auto" /> : '—') : 
+                      feature.premium}
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    {typeof feature.enterprise === 'boolean' ? 
+                      (feature.enterprise ? <Check className="h-4 w-4 text-green-500 mx-auto" /> : '—') : 
+                      feature.enterprise}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      {/* Billing History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("subscription.billingHistory")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">{t("subscription.premiumClient")} Plan</p>
-                <p className="text-sm text-muted-foreground">January 2024</p>
-              </div>
-              <div className="text-right">
-                <p className="font-semibold">$29.00</p>
-                <Badge className="bg-green-100 text-green-800 border-green-200">{t("common.paid")}</Badge>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">{t("subscription.premiumClient")} Plan</p>
-                <p className="text-sm text-muted-foreground">December 2023</p>
-              </div>
-              <div className="text-right">
-                <p className="font-semibold">$29.00</p>
-                <Badge className="bg-green-100 text-green-800 border-green-200">{t("common.paid")}</Badge>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-blue-50 rounded-xl p-8 text-center">
+        <Shield className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Need help choosing a plan?</h2>
+        <p className="text-gray-600 max-w-2xl mx-auto mb-6">
+          Our team is here to help you find the perfect plan for your legal needs.
+        </p>
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Phone className="mr-2 h-4 w-4" /> Contact Sales
+        </Button>
+      </div>
     </div>
   )
 }

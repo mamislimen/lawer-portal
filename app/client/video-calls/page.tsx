@@ -1,658 +1,641 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Plus,
-  Video,
-  Calendar,
-  Clock,
-  Search,
-  Phone,
-  PhoneOff,
-  Mic,
-  MicOff,
-  Monitor,
-  Settings,
-  Play,
-} from "lucide-react"
+import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import { format } from "date-fns";
+import { useRouter } from "next/navigation";
+import { toast } from "@/hooks/use-toast";
+import AgoraRTC, {
+  IAgoraRTCClient,
+  IAgoraRTCRemoteUser,
+  ICameraVideoTrack,
+  IMicrophoneAudioTrack,
+} from "agora-rtc-sdk-ng";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, CalendarPlus, Calendar, Clock } from "lucide-react";
+import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Monitor } from "lucide-react";
+import { ScheduleCallDialog } from "./components/ScheduleCallDialog";
+interface User {
+  id: string;
+  name: string | null;
+  email: string | null;
+  image: string | null;
+}
 
-const mockUpcomingCalls = [
-  {
-    id: 1,
-    lawyer: "John Doe",
-    lawyerAvatar: "JD",
-    specialty: "Corporate Law",
-    scheduledTime: "2024-01-26 14:00",
-    duration: "60 min",
-    type: "Case Strategy Meeting",
-    status: "Scheduled",
-    meetingLink: "https://meet.example.com/abc123",
-    caseRelated: "Property Dispute Case",
-  },
-  {
-    id: 2,
-    lawyer: "Sarah Wilson",
-    lawyerAvatar: "SW",
-    specialty: "Family Law",
-    scheduledTime: "2024-01-28 10:00",
-    duration: "45 min",
-    type: "Document Review",
-    status: "Scheduled",
-    meetingLink: "https://meet.example.com/def456",
-    caseRelated: "Employment Contract Review",
-  },
-  {
-    id: 3,
-    lawyer: "Michael Brown",
-    lawyerAvatar: "MB",
-    specialty: "Personal Injury",
-    scheduledTime: "2024-01-30 15:30",
-    duration: "30 min",
-    type: "Follow-up Consultation",
-    status: "Pending Confirmation",
-    meetingLink: "https://meet.example.com/ghi789",
-    caseRelated: "Personal Injury Claim",
-  },
-]
+interface Case {
+  id: string;
+  title: string;
+}
 
-const mockCallHistory = [
-  {
-    id: 1,
-    lawyer: "John Doe",
-    lawyerAvatar: "JD",
-    date: "2024-01-20 14:00",
-    duration: "45 min",
-    type: "Initial Consultation",
-    status: "Completed",
-    recording: true,
-    caseRelated: "Property Dispute Case",
-  },
-  {
-    id: 2,
-    lawyer: "Sarah Wilson",
-    lawyerAvatar: "SW",
-    date: "2024-01-18 16:30",
-    duration: "30 min",
-    type: "Contract Review",
-    status: "Completed",
-    recording: true,
-    caseRelated: "Employment Contract Review",
-  },
-  {
-    id: 3,
-    lawyer: "Michael Brown",
-    lawyerAvatar: "MB",
-    date: "2024-01-15 11:00",
-    duration: "60 min",
-    type: "Case Discussion",
-    status: "Missed",
-    recording: false,
-    caseRelated: "Personal Injury Claim",
-  },
-  {
-    id: 4,
-    lawyer: "John Doe",
-    lawyerAvatar: "JD",
-    date: "2024-01-12 09:30",
-    duration: "25 min",
-    type: "Quick Update",
-    status: "Rescheduled",
-    recording: false,
-    caseRelated: "Property Dispute Case",
-  },
-]
+interface VideoCall {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  scheduledAt: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  duration: number | null;
+  recordingUrl: string | null;
+  agoraChannelName: string;
+  host: User;
+  participant: User | null;
+  case: Case | null;
+  isHost: boolean;
+  meetingLink: string;
+}
+
+type CallStatus = "disconnected" | "connecting" | "connected" | "failed" | "ended" | "disconnecting";
+
+const APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID || "";
+const TOKEN = process.env.NEXT_PUBLIC_AGORA_TOKEN || "";
 
 export default function ClientVideoCallsPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
-  const [isInCall, setIsInCall] = useState(false)
-  const [currentCall, setCurrentCall] = useState<any>(null)
-  const [callDuration, setCallDuration] = useState(0)
-  const [isMuted, setIsMuted] = useState(false)
-  const [isVideoOn, setIsVideoOn] = useState(true)
-  const [isScreenSharing, setIsScreenSharing] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState("Connected")
+  const router = useRouter();
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [recentAppointment, setRecentAppointment] = useState<any>(null);
+  const { data: session, status } = useSession();
 
-  const filteredUpcomingCalls = mockUpcomingCalls.filter(
-    (call) =>
-      call.lawyer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      call.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      call.caseRelated.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Video calls state
+  const [videoCalls, setVideoCalls] = useState<VideoCall[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
 
-  const filteredCallHistory = mockCallHistory.filter(
-    (call) =>
-      call.lawyer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      call.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      call.caseRelated.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Call state
+  const [currentCall, setCurrentCall] = useState<VideoCall | null>(null);
+  const [isInCall, setIsInCall] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<CallStatus>("disconnected");
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Scheduled":
-        return "status-active"
-      case "Pending Confirmation":
-        return "status-pending"
-      case "Completed":
-        return "status-completed"
-      case "Missed":
-        return "status-high-priority"
-      case "Rescheduled":
-        return "status-pending"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+  // Refs
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const localAudioTrack = useRef<IMicrophoneAudioTrack | null>(null);
+  const localVideoTrack = useRef<ICameraVideoTrack | null>(null);
+  const localVideoRef = useRef<HTMLDivElement>(null);
+  const remoteVideoRef = useRef<HTMLDivElement>(null);
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Handle when a new appointment is created
+  const handleAppointmentCreated = async (newAppointment: any) => {
+    try {
+      // Refresh the video calls list to include the new appointment
+      await fetchVideoCalls();
+      toast({
+        title: "Success",
+        description: "Video call scheduled successfully!",
+      });
+    } catch (error) {
+      console.error("Error handling new appointment:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update video calls list",
+        variant: "destructive"
+      });
     }
-  }
+  };
 
-  const joinCall = (call: any) => {
-    setCurrentCall(call)
-    setIsInCall(true)
-    setCallDuration(0)
-    setConnectionStatus("Connecting...")
+  // Fetch video calls from API
+  const fetchVideoCalls = async () => {
+    try {
+      setLoading(true);
+      // Fetch appointments of type 'MEETING' which we're using for video calls
+      const response = await fetch("/api/appointments?type=MEETING");
+      if (!response.ok) throw new Error("Failed to fetch video calls");
+      
+      const appointments = await response.json();
+      
+      // Transform appointments into VideoCall format
+      const videoCallsData = appointments.map((appt: any) => ({
+        id: appt.id,
+        title: appt.title,
+        description: appt.description,
+        status: appt.status,
+        scheduledAt: appt.startTime,
+        startedAt: appt.startedAt || null,
+        endedAt: appt.endedAt || null,
+        duration: appt.duration || 30, // Default to 30 minutes if not specified
+        recordingUrl: null, // Add this if you implement recording later
+        agoraChannelName: `video-call-${appt.id}`, // Generate a channel name
+        host: {
+          id: appt.lawyer?.id || '',
+          name: appt.lawyer?.name || 'Lawyer',
+          email: appt.lawyer?.email || null,
+          image: appt.lawyer?.image || null
+        },
+        participant: {
+          id: appt.client?.id || '',
+          name: appt.client?.name || 'Client',
+          email: appt.client?.email || null,
+          image: appt.client?.image || null
+        },
+        case: appt.case || null,
+        isHost: session?.user?.id === appt.lawyerId,
+        meetingLink: `/client/video-calls/${appt.id}`
+      }));
+      
+      setVideoCalls(videoCallsData);
+    } catch (err) {
+      console.error("Error fetching video calls:", err);
+      setError("Failed to load video calls.");
+      toast({   
+        title: "Error",
+        description: "Failed to load video calls",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    // Simulate connection
-    setTimeout(() => {
-      setConnectionStatus("Connected")
-      // Start duration timer
-      const timer = setInterval(() => {
-        setCallDuration((prev) => prev + 1)
-      }, 1000)
+  // Initialize Agora client
+  const initAgoraClient = () => {
+    if (typeof window !== 'undefined' && !clientRef.current) {
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      clientRef.current = client;
+    }
+    return clientRef.current;
+  };
 
-      return () => clearInterval(timer)
-    }, 2000)
-  }
+  // Join a video call
+  const joinCall = async (call: VideoCall) => {
+    try {
+      setCurrentCall(call);
+      setIsInCall(true);
+      setConnectionStatus('connecting');
+      
+      if (!APP_ID) {
+        const errorMsg = "Agora App ID is not configured. Please check your environment variables.";
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      // Initialize Agora client
+      const client = initAgoraClient();
+      if (!client) {
+        const errorMsg = "Failed to initialize Agora client. The browser may not be supported.";
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      // For testing purposes, you can use a simple channel name
+      // In production, use the call.agoraChannelName
+      const channelName = call.agoraChannelName || `test-channel-${Date.now()}`;
+      const userId = session?.user?.id || `user-${Math.random().toString(36).substr(2, 9)}`;
+      
+      console.log(`Joining channel: ${channelName} with user: ${userId}`);
+      
+      // Join the channel with error handling for network issues
+      try {
+        await client.join(
+          APP_ID,
+          channelName,
+          TOKEN || null, // Token is optional for testing
+          userId
+        );
+        console.log("Successfully joined channel");
+      } catch (joinError) {
+        console.error("Failed to join channel:", joinError);
+        throw new Error("Could not connect to the video call. Please check your internet connection and try again.");
+      }
+      
+      // Create and publish local tracks with error handling
+      let audioTrack: IMicrophoneAudioTrack | null = null;
+      let videoTrack: ICameraVideoTrack | null = null;
+      
+      try {
+        [audioTrack, videoTrack] = await Promise.all([
+          AgoraRTC.createMicrophoneAudioTrack().catch(err => {
+            console.warn("Could not access microphone:", err);
+            return null;
+          }),
+          AgoraRTC.createCameraVideoTrack({
+            encoderConfig: {
+              width: { min: 640, ideal: 1280, max: 1920 },
+              height: { min: 480, ideal: 720, max: 1080 },
+              frameRate: { max: 30 }
+            }
+          }).catch(err => {
+            console.warn("Could not access camera:", err);
+            return null;
+          })
+        ]);
+        
+        // Store track references if they exist
+        if (audioTrack) {
+          localAudioTrack.current = audioTrack;
+        }
+        if (videoTrack) {
+          localVideoTrack.current = videoTrack;
+        }
+        
+        // Publish tracks if they were created successfully
+        const tracksToPublish = [];
+        if (audioTrack) {
+          tracksToPublish.push(audioTrack);
+        }
+        if (videoTrack) {
+          tracksToPublish.push(videoTrack);
+        }
+        
+        if (tracksToPublish.length > 0) {
+          await client.publish(tracksToPublish);
+        } else {
+          console.warn("No tracks were published. Microphone and camera access might be denied.");
+        }
+        
+        // Play local video if available
+        if (videoTrack) {
+          const localVideoElement = document.getElementById("local-video");
+          if (localVideoElement) {
+            videoTrack.play("local-video", { fit: "cover" });
+          }
+        }
+        
+        // Set up event listeners for remote users
+        client.on("user-published", handleUserPublished);
+        client.on("user-unpublished", handleUserUnpublished);
+        client.on("user-left", handleUserLeft);
+        
+        // Start call timer
+        callTimerRef.current = setInterval(() => {
+          setCallDuration(prev => prev + 1);
+        }, 1000);
+        
+        setConnectionStatus("connected");
+        toast({
+        title: "Success",
+        description: "Successfully joined the call!",
+        variant: "default",
+      });
+        
+      } catch (trackError) {
+        console.error("Error setting up media tracks:", trackError);
+        throw new Error("Could not access your camera or microphone. Please check your device permissions and try again.");
+      }
+      
+    } catch (error) {
+      console.error("Error joining call:", error);
+      setConnectionStatus("failed");
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to join the call. Please try again.",
+        variant: "destructive",
+      });
+      leaveCall();
+    }
+  };
 
-  const endCall = () => {
-    setIsInCall(false)
-    setCurrentCall(null)
-    setCallDuration(0)
-    setIsMuted(false)
-    setIsVideoOn(true)
-    setIsScreenSharing(false)
-    setIsRecording(false)
-    setConnectionStatus("Disconnected")
-  }
+  const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "audio" | "video") => {
+    await clientRef.current?.subscribe(user, mediaType);
+    if (mediaType === "video" && remoteVideoRef.current) user.videoTrack?.play(remoteVideoRef.current);
+    if (mediaType === "audio") user.audioTrack?.play();
+  };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
-  }
+  const handleUserUnpublished = (user: IAgoraRTCRemoteUser) => {};
+  const handleUserLeft = (user: IAgoraRTCRemoteUser) => {};
 
-  if (isInCall && currentCall) {
-    return (
-      <div className="fixed inset-0 bg-black z-50 flex flex-col">
-        {/* Video Call Interface */}
-        <div className="flex-1 relative">
-          {/* Main video area */}
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
-            <div className="text-center text-white">
-              <Avatar className="h-32 w-32 mx-auto mb-4 border-4 border-white">
-                <AvatarImage src="/placeholder.svg" />
-                <AvatarFallback className="text-4xl bg-gray-700 text-white">{currentCall.lawyerAvatar}</AvatarFallback>
-              </Avatar>
-              <h2 className="text-2xl font-bold mb-2">{currentCall.lawyer}</h2>
-              <p className="text-gray-300 mb-1">{currentCall.specialty}</p>
-              <p className="text-gray-400">{currentCall.type}</p>
-            </div>
-          </div>
+  const leaveCall = async () => {
+    try {
+      setConnectionStatus("disconnecting");
+      
+      // Stop all tracks and clean up resources
+      const cleanupPromises = [];
+      
+      // Stop and clean up audio track
+      if (clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio")) {
+        cleanupPromises.push(
+          (async () => {
+            try {
+              clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio")?.stop();
+              clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio")?.close();
+            } catch (err) {
+              console.error("Error cleaning up audio track:", err);
+            }
+          })()
+        );
+      }
+      
+      // Stop and clean up video track
+      if (clientRef.current?.localTracks.find((t) => t.trackMediaType === "video")) {
+        cleanupPromises.push(
+          (async () => {
+            try {
+              clientRef.current?.localTracks.find((t) => t.trackMediaType === "video")?.stop();
+              clientRef.current?.localTracks.find((t) => t.trackMediaType === "video")?.close();
+            } catch (err) {
+              console.error("Error cleaning up video track:", err);
+            }
+          })()
+        );
+      }
+      
+      // Stop and clean up screen share if active
+      if (isScreenSharing) {
+        cleanupPromises.push(
+          (async () => {
+            try {
+              // Stop and clean up screen share
+              // NOTE: You need to implement the screenTrack cleanup logic here
+            } catch (err) {
+              console.error("Error cleaning up screen share:", err);
+            }
+          })()
+        );
+      }
+      
+      // Leave the channel and clean up Agora client
+      if (clientRef.current) {
+        try {
+          // Unpublish all tracks first
+          try {
+            await clientRef.current.unpublish();
+          } catch (unpublishError) {
+            console.warn("Error unpublishing tracks:", unpublishError);
+          }
+          
+          // Leave the channel
+          try {
+            await clientRef.current.leave();
+          } catch (leaveError) {
+            console.warn("Error leaving channel:", leaveError);
+          }
+          
+          // Remove all event listeners
+          clientRef.current.removeAllListeners();
+          clientRef.current = null;
+        } catch (clientError) {
+          console.error("Error cleaning up Agora client:", clientError);
+        }
+      }
+      
+      // Clear call timer
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+        callTimerRef.current = null;
+      }
+      
+      // Wait for all cleanup operations to complete
+      await Promise.allSettled(cleanupPromises);
+      
+      // Reset state
+      setConnectionStatus("disconnected");
+      setIsInCall(false);
+      setCurrentCall(null);
+      setCallDuration(0);
+      setIsMuted(false);
+      setIsVideoOn(true);
+      
+      // Notify user
+      toast({
+        title: "Success",
+        description: "You have left the call",
+        variant: "default",
+      });
+      
+    } catch (error) {
+      console.error("Error during call cleanup:", error);
+      toast({
+        title: "Error",
+        description: "Error leaving the call. Some resources may not have been cleaned up properly.",
+        variant: "destructive",
+      });
+    } finally {
+          // Ensure we always reset the connection status, even if there was an error
+      setConnectionStatus("disconnected");
+    }
+  };
 
-          {/* Self video (Picture in Picture) */}
-          <div className="absolute top-4 right-4 w-48 h-36 bg-gray-800 rounded-lg border-2 border-white overflow-hidden">
-            <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center">
-              <Avatar className="h-16 w-16">
-                <AvatarImage src="/placeholder.svg" />
-                <AvatarFallback className="bg-gray-600 text-white">JS</AvatarFallback>
-              </Avatar>
-            </div>
-          </div>
+  const toggleMute = () => {
+    const audioTrack = clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio");
+    if (audioTrack) {
+      audioTrack.setMuted(!isMuted);
+      setIsMuted(!isMuted);
+    }
+  };
 
-          {/* Call info overlay */}
-          <div className="absolute top-4 left-4 bg-black bg-opacity-50 rounded-lg p-3 text-white">
-            <div className="flex items-center gap-2 mb-1">
-              <div
-                className={`h-2 w-2 rounded-full ${connectionStatus === "Connected" ? "bg-green-500" : "bg-yellow-500"}`}
-              ></div>
-              <span className="text-sm">{connectionStatus}</span>
-            </div>
-            <div className="text-lg font-mono">{formatDuration(callDuration)}</div>
-            {isRecording && (
-              <div className="flex items-center gap-1 text-red-400 text-sm mt-1">
-                <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
-                Recording
-              </div>
-            )}
-          </div>
-        </div>
+  const toggleVideo = () => {
+    const videoTrack = clientRef.current?.localTracks.find((t) => t.trackMediaType === "video");
+    if (videoTrack) {
+      videoTrack.setMuted(!isVideoOn);
+      setIsVideoOn(!isVideoOn);
+    }
+  };
 
-        {/* Call controls */}
-        <div className="bg-black bg-opacity-90 p-6">
-          <div className="flex items-center justify-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-12 w-12 rounded-full ${isMuted ? "bg-red-600 hover:bg-red-700" : "bg-gray-700 hover:bg-gray-600"} text-white`}
-              onClick={() => setIsMuted(!isMuted)}
-            >
-              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </Button>
+  const toggleScreenShare = async () => {
+    try {
+      if (!isScreenSharing) {
+        const screenTrack = await AgoraRTC.createScreenVideoTrack({}, "disable");
+        await clientRef.current?.unpublish();
+        await clientRef.current?.publish([screenTrack]);
+        setIsScreenSharing(true);
+      } else {
+        await clientRef.current?.unpublish();
+        const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        await clientRef.current?.publish([audioTrack, videoTrack]);
+        setIsScreenSharing(false);
+      }
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Error",
+        description: "Failed to toggle screen share",
+        variant: "destructive"
+      });
+    }
+  };
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-12 w-12 rounded-full ${!isVideoOn ? "bg-red-600 hover:bg-red-700" : "bg-gray-700 hover:bg-gray-600"} text-white`}
-              onClick={() => setIsVideoOn(!isVideoOn)}
-            >
-              <Video className="h-5 w-5" />
-            </Button>
+  const startCallTimer = () => {
+    setCallDuration(0);
+    callTimerRef.current = setInterval(() => setCallDuration((prev) => prev + 1), 1000);
+  };
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-12 w-12 rounded-full ${isScreenSharing ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-700 hover:bg-gray-600"} text-white`}
-              onClick={() => setIsScreenSharing(!isScreenSharing)}
-            >
-              <Monitor className="h-5 w-5" />
-            </Button>
+  const formatCallDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-12 w-12 rounded-full ${isRecording ? "bg-red-600 hover:bg-red-700" : "bg-gray-700 hover:bg-gray-600"} text-white`}
-              onClick={() => setIsRecording(!isRecording)}
-            >
-              <div className="h-3 w-3 bg-current rounded-full"></div>
-            </Button>
+  useEffect(() => {
+    if (status === "authenticated") fetchVideoCalls();
+    return () => {
+      leaveCall();
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    };
+  }, [status]);
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-12 w-12 rounded-full bg-red-600 hover:bg-red-700 text-white"
-              onClick={endCall}
-            >
-              <PhoneOff className="h-5 w-5" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-12 w-12 rounded-full bg-gray-700 hover:bg-gray-600 text-white"
-            >
-              <Settings className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <Loader2 className="animate-spin" />;
+  if (error) return <div className="text-red-500">{error}</div>;
 
   return (
-    <div className="space-y-8 p-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight text-black">Video Calls</h1>
-          <p className="text-gray-600 text-lg">Connect with your legal team through secure video consultations.</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="outline" className="gap-2 gradient-button-outline formal-shadow bg-transparent">
-            <Video className="h-4 w-4" />
-            Start Instant Call
-          </Button>
-          <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2 gradient-button formal-shadow">
-                <Plus className="h-4 w-4" />
-                Schedule Call
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] bg-white border-gray-200 formal-shadow">
-              <DialogHeader>
-                <DialogTitle className="text-black">Schedule Video Call</DialogTitle>
-                <DialogDescription className="text-gray-600">
-                  Request a video consultation with your lawyer.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="lawyer" className="text-right text-black">
-                    Lawyer
-                  </Label>
-                  <Select>
-                    <SelectTrigger className="col-span-3 bg-white border-gray-200">
-                      <SelectValue placeholder="Select lawyer" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="john">John Doe - Corporate Law</SelectItem>
-                      <SelectItem value="sarah">Sarah Wilson - Family Law</SelectItem>
-                      <SelectItem value="michael">Michael Brown - Personal Injury</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="caseType" className="text-right text-black">
-                    Case Type
-                  </Label>
-                  <Select>
-                    <SelectTrigger className="col-span-3 bg-white border-gray-200">
-                      <SelectValue placeholder="Select case" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="property">Property Dispute Case</SelectItem>
-                      <SelectItem value="contract">Employment Contract Review</SelectItem>
-                      <SelectItem value="injury">Personal Injury Claim</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="meetingType" className="text-right text-black">
-                    Meeting Type
-                  </Label>
-                  <Select>
-                    <SelectTrigger className="col-span-3 bg-white border-gray-200">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="consultation">Consultation</SelectItem>
-                      <SelectItem value="review">Document Review</SelectItem>
-                      <SelectItem value="strategy">Strategy Meeting</SelectItem>
-                      <SelectItem value="follow-up">Follow-up</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="preferredDate" className="text-right text-black">
-                    Preferred Date
-                  </Label>
-                  <Input id="preferredDate" type="date" className="col-span-3 bg-white border-gray-200" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="preferredTime" className="text-right text-black">
-                    Preferred Time
-                  </Label>
-                  <Input id="preferredTime" type="time" className="col-span-3 bg-white border-gray-200" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="notes" className="text-right text-black">
-                    Notes
-                  </Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Brief description of what you'd like to discuss..."
-                    className="col-span-3 bg-white border-gray-200"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  onClick={() => setIsScheduleDialogOpen(false)}
-                  className="gradient-button formal-shadow"
-                >
-                  Send Request
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Video Calls</h1>
+        <Button 
+          onClick={() => setIsScheduleDialogOpen(true)}
+          className="flex items-center gap-2"
+        >
+          <CalendarPlus className="h-4 w-4" />
+          Schedule Video Call
+        </Button>
       </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-4">
-        <Card className="gradient-card formal-shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black">Total Calls</CardTitle>
-            <Video className="h-4 w-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-black">{mockUpcomingCalls.length + mockCallHistory.length}</div>
-            <p className="text-xs text-gray-600">This month</p>
-          </CardContent>
-        </Card>
-        <Card className="gradient-card formal-shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black">Upcoming</CardTitle>
-            <Calendar className="h-4 w-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-black">
-              {mockUpcomingCalls.filter((c) => c.status === "Scheduled").length}
-            </div>
-            <p className="text-xs text-gray-600">Scheduled calls</p>
-          </CardContent>
-        </Card>
-        <Card className="gradient-card formal-shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black">Completed</CardTitle>
-            <Phone className="h-4 w-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-black">
-              {mockCallHistory.filter((c) => c.status === "Completed").length}
-            </div>
-            <p className="text-xs text-gray-600">This month</p>
-          </CardContent>
-        </Card>
-        <Card className="gradient-card formal-shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black">Total Hours</CardTitle>
-            <Clock className="h-4 w-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-black">3.5</div>
-            <p className="text-xs text-gray-600">Hours this month</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabs for Upcoming Calls and Call History */}
-      <Tabs defaultValue="upcoming" className="space-y-6">
-        <div className="flex items-center justify-between">
-          <TabsList className="bg-gray-100 border border-gray-200">
-            <TabsTrigger
-              value="upcoming"
-              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
-            >
-              Upcoming Calls
-            </TabsTrigger>
-            <TabsTrigger
-              value="history"
-              className="text-black data-[state=active]:bg-white data-[state=active]:text-black"
-            >
-              Call History
-            </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upcoming" | "past")}>
+        <div className="flex justify-between items-center mb-4">
+          <TabsList>
+            <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
+            <TabsTrigger value="past">Past</TabsTrigger>
           </TabsList>
-
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-            <Input
-              placeholder="Search calls..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-white border-gray-200 text-black placeholder:text-gray-500"
-            />
-          </div>
         </div>
-
+        
         <TabsContent value="upcoming" className="space-y-4">
-          <Card className="gradient-card formal-shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-black">Upcoming Video Calls</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-gray-200">
-                    <TableHead className="text-black">Lawyer</TableHead>
-                    <TableHead className="text-black">Date & Time</TableHead>
-                    <TableHead className="text-black">Type</TableHead>
-                    <TableHead className="text-black">Case</TableHead>
-                    <TableHead className="text-black">Status</TableHead>
-                    <TableHead className="text-right text-black">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUpcomingCalls.map((call) => (
-                    <TableRow key={call.id} className="border-gray-200">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src="/placeholder.svg" />
-                            <AvatarFallback className="gradient-button text-white text-xs">
-                              {call.lawyerAvatar}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium text-black">{call.lawyer}</p>
-                            <p className="text-sm text-gray-600">{call.specialty}</p>
-                          </div>
+          {videoCalls
+            .filter(call => call.status === 'SCHEDULED' || call.status === 'IN_PROGRESS')
+            .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+            .map((call) => (
+              <Card key={call.id} className={`${call.status === 'IN_PROGRESS' ? 'border-2 border-blue-500' : ''}`}>
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-lg font-semibold">{call.title}</h3>
+                      {call.description && (
+                        <p className="text-sm text-gray-600 mt-1">{call.description}</p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-2" />
+                          <span>{format(new Date(call.scheduledAt), 'MMM d, yyyy')}</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-black">
-                            <Calendar className="h-4 w-4 text-gray-600" />
-                            {new Date(call.scheduledTime).toLocaleDateString()}
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Clock className="h-4 w-4" />
-                            {new Date(call.scheduledTime).toLocaleTimeString()} ({call.duration})
-                          </div>
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2" />
+                          <span>{format(new Date(call.scheduledAt), 'h:mm a')}</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-black">{call.type}</TableCell>
-                      <TableCell className="text-black">{call.caseRelated}</TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(call.status)}>{call.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-2 justify-end">
-                          {call.status === "Scheduled" && (
-                            <Button
-                              size="sm"
-                              onClick={() => joinCall(call)}
-                              className="gap-2 gradient-button formal-shadow"
-                            >
-                              <Video className="h-4 w-4" />
-                              Join Call
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gradient-button-outline formal-shadow bg-transparent"
-                          >
-                            Reschedule
-                          </Button>
+                        <div className="flex items-center">
+                          <span>•</span>
+                          <span className="ml-2">{call.duration || 30} min</span>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                        {call.status === 'IN_PROGRESS' && (
+                          <div className="flex items-center text-blue-600 font-medium">
+                            <span className="flex h-2 w-2 mr-1.5 rounded-full bg-blue-600"></span>
+                            In Progress
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button 
+                        onClick={() => joinCall(call)}
+                        disabled={connectionStatus === 'connecting' || connectionStatus === 'connected'}
+                        className="whitespace-nowrap"
+                      >
+                        {connectionStatus === 'connecting' ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        {call.status === 'IN_PROGRESS' ? 'Join Call' : 'Start Call'}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+          {videoCalls.filter(call => call.status === 'SCHEDULED' || call.status === 'IN_PROGRESS').length === 0 && (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <Calendar className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900">No upcoming video calls</h3>
+              <p className="mt-1 text-sm text-gray-500">Schedule a video call to get started.</p>
+              <Button 
+                onClick={() => setIsScheduleDialogOpen(true)}
+                className="mt-4"
+              >
+                <CalendarPlus className="h-4 w-4 mr-2" />
+                Schedule Video Call
+              </Button>
+            </div>
+          )}
         </TabsContent>
-
-        <TabsContent value="history" className="space-y-4">
-          <Card className="gradient-card formal-shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-black">Call History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-gray-200">
-                    <TableHead className="text-black">Lawyer</TableHead>
-                    <TableHead className="text-black">Date & Time</TableHead>
-                    <TableHead className="text-black">Duration</TableHead>
-                    <TableHead className="text-black">Type</TableHead>
-                    <TableHead className="text-black">Case</TableHead>
-                    <TableHead className="text-black">Status</TableHead>
-                    <TableHead className="text-right text-black">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCallHistory.map((call) => (
-                    <TableRow key={call.id} className="border-gray-200">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src="/placeholder.svg" />
-                            <AvatarFallback className="gradient-button text-white text-xs">
-                              {call.lawyerAvatar}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium text-black">{call.lawyer}</p>
-                          </div>
+        
+        <TabsContent value="past" className="space-y-4">
+          {videoCalls
+            .filter(call => call.status === 'COMPLETED' || call.status === 'CANCELLED')
+            .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
+            .map((call) => (
+              <Card key={call.id} className="opacity-70">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-lg font-semibold">{call.title}</h3>
+                      {call.description && (
+                        <p className="text-sm text-gray-600 mt-1">{call.description}</p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-2" />
+                          <span>{format(new Date(call.scheduledAt), 'MMM d, yyyy')}</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-black">
-                          <Calendar className="h-4 w-4 text-gray-600" />
-                          {new Date(call.date).toLocaleString()}
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2" />
+                          <span>{format(new Date(call.scheduledAt), 'h:mm a')}</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-black">
-                          <Clock className="h-4 w-4 text-gray-600" />
-                          {call.duration}
+                        <div className="flex items-center">
+                          <span>•</span>
+                          <span className="ml-2">{call.duration || 30} min</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-black">{call.type}</TableCell>
-                      <TableCell className="text-black">{call.caseRelated}</TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(call.status)}>{call.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-2 justify-end">
-                          {call.recording && call.status === "Completed" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-2 gradient-button-outline formal-shadow bg-transparent"
-                            >
-                              <Play className="h-4 w-4" />
-                              Recording
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gradient-button-outline formal-shadow bg-transparent"
-                          >
-                            Details
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                      </div>
+                    </div>
+                    <div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        call.status === 'COMPLETED' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {call.status === 'COMPLETED' ? 'Completed' : 'Cancelled'}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+          {videoCalls.filter(call => call.status === 'COMPLETED' || call.status === 'CANCELLED').length === 0 && (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <Calendar className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900">No past video calls</h3>
+              <p className="mt-1 text-sm text-gray-500">Your completed or cancelled calls will appear here.</p>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
+
+      {/* Video call interface */}
+      {isInCall && currentCall && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div ref={remoteVideoRef} className="flex-1" />
+          <div ref={localVideoRef} className="flex-1" />
+          <div className="flex justify-end p-4">
+            <Button onClick={toggleMute}>
+              {isMuted ? <MicOff /> : <Mic />}
+            </Button>
+            <Button onClick={toggleVideo}>
+              {isVideoOn ? <VideoOff /> : <VideoIcon />}
+            </Button>
+            <Button onClick={toggleScreenShare}>
+              {isScreenSharing ? <Monitor /> : <PhoneOff />}
+            </Button>
+            <Button onClick={leaveCall}>Leave Call</Button>
+          </div>
+        </div>
+      )}
+      {/* Schedule Call Dialog */}
+      <ScheduleCallDialog 
+        open={isScheduleDialogOpen}
+        onOpenChange={setIsScheduleDialogOpen}
+        onAppointmentCreated={handleAppointmentCreated}
+      />
     </div>
-  )
+  );
 }

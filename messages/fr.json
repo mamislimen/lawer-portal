@@ -1,0 +1,19 @@
+{
+  "Header": {
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "clients": "Clients",
+      "cases": "Dossiers",
+      "documents": "Documents",
+      "calendar": "Calendrier",
+      "billing": "Facturation",
+      "reports": "Rapports",
+      "settings": "Paramètres"
+    },
+    "userMenu": {
+      "profile": "Profil",
+      "settings": "Paramètres",
+      "signOut": "Déconnexion"
+    }
+  }
+}

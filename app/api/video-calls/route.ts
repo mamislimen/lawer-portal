@@ -96,7 +96,6 @@ export async function POST(request: NextRequest) {
       const caseAccess = await prisma.case.findFirst({
         where: {
           id: validatedData.caseId,
-          OR: [{ lawyerId: session.user.id }, { clientId: session.user.id }],
         },
       })
 
@@ -137,7 +136,7 @@ export async function POST(request: NextRequest) {
         userId: validatedData.participantId,
         title: "Video Call Scheduled",
         message: `A video call "${validatedData.title}" has been scheduled with you`,
-        type: "VIDEO_CALL",
+        type: "APPOINTMENT_UPDATED",
       },
     })
 

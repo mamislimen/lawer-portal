@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,66 +18,205 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Video, Calendar, Clock, Phone, PhoneOff, Search } from "lucide-react"
+import { Plus, Video, Calendar, Clock, Search, Loader2, User, Users, Phone } from "lucide-react"
+import { format } from "date-fns"
+import { useSession } from "next-auth/react"
+import { toast } from "sonner"
+import { VideoCallRoom } from "./components/VideoCallRoom"
 
-const mockCalls = [
-  {
-    id: 1,
-    client: "John Smith",
-    scheduledTime: "2024-01-25 14:00",
-    duration: "45 min",
-    status: "Scheduled",
-    type: "Consultation",
-    meetingLink: "https://meet.example.com/abc123",
-  },
-  {
-    id: 2,
-    client: "Sarah Johnson",
-    scheduledTime: "2024-01-25 16:30",
-    duration: "30 min",
-    status: "Completed",
-    type: "Follow-up",
-    meetingLink: "https://meet.example.com/def456",
-  },
-  {
-    id: 3,
-    client: "Michael Brown",
-    scheduledTime: "2024-01-26 10:00",
-    duration: "60 min",
-    status: "Scheduled",
-    type: "Case Review",
-    meetingLink: "https://meet.example.com/ghi789",
-  },
-]
+type VideoCall = {
+  id: string
+  title: string
+  description: string | null
+  hostId: string
+  participantId: string
+  caseId: string | null
+  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+  scheduledAt: string
+  startedAt: string | null
+  endedAt: string | null
+  duration: number | null
+  recordingUrl: string | null
+  agoraChannelName: string
+  participant: {
+    id: string
+    name: string | null
+    email: string
+    image: string | null
+  }
+  case?: {
+    id: string
+    title: string
+  } | null
+}
 
 export default function VideoCallsPage() {
-  const [calls, setCalls] = useState(mockCalls)
+  const router = useRouter()
+  const { data: session } = useSession()
+  
+  const [calls, setCalls] = useState<VideoCall[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
+  const [activeCall, setActiveCall] = useState<VideoCall | null>(null)
+  const [isJoiningCall, setIsJoiningCall] = useState(false)
+
+  // Fetch video calls from the API
+  useEffect(() => {
+    const fetchVideoCalls = async () => {
+      try {
+        setIsLoading(true)
+        const response = await fetch('/api/dashboard/video-calls')
+        if (!response.ok) {
+          throw new Error('Failed to fetch video calls')
+        }
+        const data = await response.json()
+        setCalls(data)
+      } catch (err) {
+        console.error('Error fetching video calls:', err)
+        toast.error('Failed to load video calls. Please try again later.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (session?.user?.id) {
+      fetchVideoCalls()
+    }
+  }, [session?.user?.id])
 
   const filteredCalls = calls.filter(
     (call) =>
-      call.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      call.type.toLowerCase().includes(searchTerm.toLowerCase()),
+      call.participant.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      call.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      call.case?.title.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: VideoCall['status']) => {
     switch (status) {
-      case "Scheduled":
+      case "SCHEDULED":
         return "bg-blue-100 text-blue-800 border-blue-200"
-      case "In Progress":
+      case "IN_PROGRESS":
         return "bg-green-100 text-green-800 border-green-200"
-      case "Completed":
+      case "COMPLETED":
         return "bg-gray-100 text-gray-800 border-gray-200"
-      case "Cancelled":
+      case "CANCELLED":
         return "bg-red-100 text-red-800 border-red-200"
       default:
         return "bg-gray-100 text-gray-800 border-gray-200"
     }
   }
 
-  const startCall = (meetingLink: string) => {
-    window.open(meetingLink, "_blank")
+  const getStatusText = (status: VideoCall['status']) => {
+    switch (status) {
+      case "SCHEDULED":
+        return "Scheduled"
+      case "IN_PROGRESS":
+        return "In Progress"
+      case "COMPLETED":
+        return "Completed"
+      case "CANCELLED":
+        return "Cancelled"
+      default:
+        return status
+    }
+  }
+
+  const joinCall = async (call: VideoCall) => {
+    try {
+      setIsJoiningCall(true)
+      
+      // Generate a unique user ID for Agora
+      const userId = session?.user?.id || Math.floor(Math.random() * 10000)
+      
+      // Get Agora token from our API
+      const response = await fetch('/api/agora/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channelName: call.agoraChannelName,
+          uid: userId,
+        }),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to join call')
+      }
+      
+      const { token } = await response.json()
+      
+      // Update call status to IN_PROGRESS if it's not already
+      if (call.status !== 'IN_PROGRESS') {
+        await fetch(`/api/dashboard/video-calls/${call.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            status: 'IN_PROGRESS',
+            startedAt: new Date().toISOString(),
+          }),
+        })
+      }
+      
+      setActiveCall(call)
+      
+    } catch (error) {
+      console.error('Error joining call:', error)
+      toast.error('Failed to join the call. Please try again.')
+    } finally {
+      setIsJoiningCall(false)
+    }
+  }
+  
+  const endCall = async () => {
+    if (!activeCall) return
+    
+    try {
+      // Update call status to COMPLETED
+      await fetch(`/api/dashboard/video-calls/${activeCall.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'COMPLETED',
+          endedAt: new Date().toISOString(),
+          duration: Math.floor((new Date().getTime() - new Date(activeCall.startedAt || new Date()).getTime()) / 1000),
+        }),
+      })
+      
+      // Refresh calls list
+      const response = await fetch('/api/dashboard/video-calls')
+      if (response.ok) {
+        const data = await response.json()
+        setCalls(data)
+      }
+      
+    } catch (error) {
+      console.error('Error ending call:', error)
+      toast.error('Failed to end the call properly. Please try again.')
+    } finally {
+      setActiveCall(null)
+    }
+  }
+  
+  const leaveCall = () => {
+    setActiveCall(null)
+  }
+
+  // If there's an active call, show the call interface
+  if (activeCall) {
+    return (
+      <VideoCallRoom
+        channelName={activeCall.agoraChannelName}
+        userId={session?.user?.id || 'anonymous'}
+        onLeave={leaveCall}
+        onEndCall={endCall}
+      />
+    )
   }
 
   return (
@@ -87,7 +227,36 @@ export default function VideoCallsPage() {
           <p className="text-muted-foreground text-lg">Schedule and manage video consultations with your clients.</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2 bg-transparent">
+          <Button 
+            variant="outline" 
+            className="gap-2 bg-transparent"
+            onClick={() => {
+              // For instant calls, create a new call with the current timestamp as the channel name
+              const channelName = `instant-${Date.now()}`
+              const newCall = {
+                id: `temp-${Date.now()}`,
+                title: 'Instant Call',
+                description: 'Instant video call',
+                agoraChannelName: channelName,
+                status: 'IN_PROGRESS' as const,
+                scheduledAt: new Date().toISOString(),
+                hostId: session?.user?.id || '',
+                participantId: '',
+                caseId: null,
+                startedAt: new Date().toISOString(),
+                endedAt: null,
+                duration: null,
+                recordingUrl: null,
+                participant: {
+                  id: '',
+                  name: 'Instant Call',
+                  email: '',
+                  image: null
+                }
+              }
+              setActiveCall(newCall)
+            }}
+          >
             <Video className="h-4 w-4" />
             Start Instant Call
           </Button>
@@ -192,7 +361,7 @@ export default function VideoCallsPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{calls.filter((c) => c.status === "Scheduled").length}</div>
+            <div className="text-3xl font-bold">{calls.filter((c) => c.status === "SCHEDULED").length}</div>
             <p className="text-xs text-muted-foreground">Upcoming calls</p>
           </CardContent>
         </Card>
@@ -202,7 +371,7 @@ export default function VideoCallsPage() {
             <Phone className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{calls.filter((c) => c.status === "Completed").length}</div>
+            <div className="text-3xl font-bold">{calls.filter((c) => c.status === "COMPLETED").length}</div>
             <p className="text-xs text-muted-foreground">This month</p>
           </CardContent>
         </Card>
@@ -248,35 +417,39 @@ export default function VideoCallsPage() {
             <TableBody>
               {filteredCalls.map((call) => (
                 <TableRow key={call.id}>
-                  <TableCell className="font-medium">{call.client}</TableCell>
+                  <TableCell className="font-medium">
+                    {call.participant?.name || 'Unknown User'}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
-                      {new Date(call.scheduledTime).toLocaleString()}
+                      {format(new Date(call.scheduledAt), 'MMM d, yyyy h:mm a')}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      {call.duration}
-                    </div>
+                    {call.duration ? `${Math.floor(call.duration / 60)}m ${call.duration % 60}s` : 'N/A'}
                   </TableCell>
-                  <TableCell>{call.type}</TableCell>
+                  <TableCell>{call.case?.title || 'No case'}</TableCell>
                   <TableCell>
-                    <Badge className={getStatusColor(call.status)}>{call.status}</Badge>
+                    <Badge className={getStatusColor(call.status)}>
+                      {getStatusText(call.status)}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex gap-2 justify-end">
-                      {call.status === "Scheduled" && (
-                        <Button size="sm" onClick={() => startCall(call.meetingLink)} className="gap-2">
-                          <Video className="h-4 w-4" />
-                          Join Call
-                        </Button>
-                      )}
-                      {call.status === "In Progress" && (
-                        <Button size="sm" variant="destructive" className="gap-2">
-                          <PhoneOff className="h-4 w-4" />
-                          End Call
+                      {call.status === "SCHEDULED" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => joinCall(call)}
+                          disabled={isJoiningCall}
+                        >
+                          {isJoiningCall ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Phone className="h-4 w-4 mr-2" />
+                          )}
+                          {isJoiningCall ? 'Joining...' : 'Join Call'}
                         </Button>
                       )}
                     </div>

@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
       const caseAccess = await prisma.case.findFirst({
         where: {
           id: caseId,
-          OR: [{ lawyerId: session.user.id }, { clientId: session.user.id }],
         },
       })
 
@@ -124,7 +123,7 @@ export async function POST(request: NextRequest) {
             userId: notifyUserId,
             title: "New Document Uploaded",
             message: `A new document "${file.name}" has been uploaded to case "${caseData.title}"`,
-            type: "DOCUMENT",
+            type: "APPOINTMENT_UPDATED",
           },
         })
       }
@@ -156,7 +155,6 @@ export async function GET(request: NextRequest) {
       const caseAccess = await prisma.case.findFirst({
         where: {
           id: caseId,
-          OR: [{ lawyerId: session.user.id }, { clientId: session.user.id }],
         },
       })
 
@@ -169,7 +167,7 @@ export async function GET(request: NextRequest) {
       // Get documents uploaded by user or in cases they have access to
       const userCases = await prisma.case.findMany({
         where: {
-          OR: [{ lawyerId: session.user.id }, { clientId: session.user.id }],
+         // OR: [{ lawyerId: session.user.id }, { clientId: session.user.id }],
         },
         select: { id: true },
       })

@@ -145,19 +145,19 @@ async function main() {
         userId: client.id,
         title: "New Message",
         message: "You have a new message from John Smith regarding Contract Review",
-        type: "MESSAGE",
+        type: "APPOINTMENT_CREATED",
       },
       {
         userId: client.id,
         title: "Video Call Scheduled",
         message: "A video call has been scheduled for today at 3:00 PM",
-        type: "VIDEO_CALL",
+        type: "APPOINTMENT_UPDATED",
       },
       {
         userId: lawyer.id,
         title: "Case Update",
         message: 'Case "Contract Review" status updated to In Progress',
-        type: "INFO",
+        type: "APPOINTMENT_CANCELLED",
       },
     ],
   })

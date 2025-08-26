@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,71 +18,144 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, Search, FileText, Download, Eye, Calendar, Folder } from "lucide-react"
+import { toast } from "sonner"
 
-const mockDocuments = [
-  {
-    id: 1,
-    name: "Property Survey Report.pdf",
-    type: "Evidence",
-    case: "Property Dispute Case",
-    uploadDate: "2024-01-20",
-    size: "2.4 MB",
-    status: "Reviewed",
-    uploadedBy: "You",
-  },
-  {
-    id: 2,
-    name: "Medical Records.pdf",
-    type: "Evidence",
-    case: "Personal Injury Claim",
-    uploadDate: "2024-01-18",
-    size: "1.8 MB",
-    status: "Under Review",
-    uploadedBy: "You",
-  },
-  {
-    id: 3,
-    name: "Settlement Agreement Draft.docx",
-    type: "Legal Document",
-    case: "Property Dispute Case",
-    uploadDate: "2024-01-22",
-    size: "156 KB",
-    status: "Requires Signature",
-    uploadedBy: "John Doe",
-  },
-  {
-    id: 4,
-    name: "Employment Contract.pdf",
-    type: "Contract",
-    case: "Employment Contract Review",
-    uploadDate: "2024-01-15",
-    size: "892 KB",
-    status: "Signed",
-    uploadedBy: "You",
-  },
-  {
-    id: 5,
-    name: "Court Filing Receipt.pdf",
-    type: "Court Document",
-    case: "Personal Injury Claim",
-    uploadDate: "2024-01-25",
-    size: "245 KB",
-    status: "Filed",
-    uploadedBy: "John Doe",
-  },
-]
+interface Document {
+  id: number;
+  name: string;
+  type: string;
+  case: string;
+  uploadDate: string;
+  size: string;
+  status: string;
+  uploadedBy: string;
+}
 
 export default function ClientDocumentsPage() {
-  const [documents, setDocuments] = useState(mockDocuments)
+  // State for documents and UI
+  const [documents, setDocuments] = useState<Document[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [documentType, setDocumentType] = useState('CONTRACT')
+  const [caseId, setCaseId] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredDocuments = documents.filter(
-    (doc) =>
-      doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.case.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.type.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Filter documents based on search term
+  const filteredDocuments = documents.filter((doc: Document) => {
+    const searchTermLower = searchTerm.toLowerCase();
+    return (
+      doc.name.toLowerCase().includes(searchTermLower) ||
+      doc.type.toLowerCase().includes(searchTermLower) ||
+      (doc.case && doc.case.toLowerCase().includes(searchTermLower))
+    );
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setSelectedFile(e.target.files[0])
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedFile) {
+      toast.error('Please select a file to upload')
+      return
+    }
+
+    setIsUploading(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      if (caseId) formData.append('caseId', caseId)
+      formData.append('type', documentType)
+
+      const response = await fetch('/api/client/documents', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to upload document')
+      }
+
+      const result = await response.json()
+      
+      // Add the new document to the list
+      setDocuments(prev => [{
+        ...result.document,
+        case: caseId || 'Uncategorized',
+        uploadedBy: 'You',
+        status: 'Uploaded'
+      }, ...prev])
+      
+      // Reset form
+      setSelectedFile(null)
+      setDocumentType('CONTRACT')
+      setCaseId(null)
+      setIsUploadDialogOpen(false)
+      
+      toast.success('Document uploaded successfully!')
+    } catch (error) {
+      console.error('Error uploading document:', error)
+      toast.error('Failed to upload document. Please try again.')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleViewDocument = async (documentId: string, documentName: string) => {
+    try {
+      // Open the document in a new tab
+      window.open(`/api/client/documents/${documentId}?view=true`, '_blank');
+    } catch (error) {
+      console.error('Error viewing document:', error);
+      toast.error('Failed to open document. Please try again.');
+    }
+  };
+
+  const handleDownloadDocument = async (documentId: string, documentName: string) => {
+    try {
+      // Create a temporary anchor element to trigger the download
+      const link = document.createElement('a');
+      link.href = `/api/client/documents/${documentId}`;
+      link.download = documentName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      toast.error('Failed to download document. Please try again.');
+    }
+  };
+
+
+
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      try {
+        const response = await fetch('/api/client/documents')
+        if (!response.ok) {
+          throw new Error('Failed to fetch documents')
+        }
+        const data = await response.json()
+        setDocuments(data)
+      } catch (err) {
+        console.error('Error fetching documents:', err)
+        setError('Failed to load documents. Please try again later.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDocuments()
+  }, [])
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -103,76 +176,114 @@ export default function ClientDocumentsPage() {
 
   const getFileIcon = (fileName: string) => {
     const extension = fileName.split(".").pop()?.toLowerCase()
-    return <FileText className="h-4 w-4 text-muted-foreground" />
+    const iconClass = "h-4 w-4 text-muted-foreground"
+    
+    switch(extension) {
+      case 'pdf':
+        return <FileText className={`${iconClass} text-red-500`} />
+      case 'doc':
+      case 'docx':
+        return <FileText className={`${iconClass} text-blue-600`} />
+      case 'xls':
+      case 'xlsx':
+        return <FileText className={`${iconClass} text-green-600`} />
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return <FileText className={`${iconClass} text-purple-500`} />
+      default:
+        return <FileText className={iconClass} />
+    }
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-4xl font-bold tracking-tight">Documents</h1>
-          <p className="text-muted-foreground text-lg">Access and manage your case documents.</p>
+          <p className="text-muted-foreground text-lg">Manage and review your legal documents.</p>
         </div>
-        <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Upload className="h-4 w-4" />
-              Upload Document
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Upload Document</DialogTitle>
-              <DialogDescription>Upload a document related to your case.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="file" className="text-right">
-                  File
-                </Label>
-                <Input id="file" type="file" className="col-span-3" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="case" className="text-right">
-                  Related Case
-                </Label>
-                <Select>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select case" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="property">Property Dispute Case</SelectItem>
-                    <SelectItem value="injury">Personal Injury Claim</SelectItem>
-                    <SelectItem value="contract">Employment Contract Review</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="docType" className="text-right">
-                  Document Type
-                </Label>
-                <Select>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="evidence">Evidence</SelectItem>
-                    <SelectItem value="contract">Contract</SelectItem>
-                    <SelectItem value="medical">Medical Records</SelectItem>
-                    <SelectItem value="financial">Financial Documents</SelectItem>
-                    <SelectItem value="correspondence">Correspondence</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" onClick={() => setIsUploadDialogOpen(false)}>
+        
+        <div className="flex flex-col items-end gap-2">
+          {isLoading && <p>Loading documents...</p>}
+          {error && <p className="text-red-500">{error}</p>}
+          {!isLoading && !error && documents.length === 0 && (
+            <p className="text-muted-foreground">No documents found.</p>
+          )}
+          <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Upload className="h-4 w-4" />
                 Upload Document
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Upload New Document</DialogTitle>
+                <DialogDescription>
+                  Select a file to upload. It will be available in your documents.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="document" className="text-right">
+                    Document
+                  </Label>
+                  <Input
+                    id="document"
+                    type="file"
+                    className="col-span-3"
+                    onChange={handleFileChange}
+                    disabled={isUploading}
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="type" className="text-right">
+                    Document Type
+                  </Label>
+                  <Select 
+                    value={documentType}
+                    onValueChange={setDocumentType}
+                    disabled={isUploading}
+                  >
+                    <SelectTrigger className="col-span-3">
+                      <SelectValue placeholder="Select document type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CONTRACT">Contract</SelectItem>
+                      <SelectItem value="EVIDENCE">Evidence</SelectItem>
+                      <SelectItem value="CORRESPONDENCE">Correspondence</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedFile && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsUploadDialogOpen(false)}
+                  disabled={isUploading}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!selectedFile || isUploading}
+                >
+                  {isUploading ? 'Uploading...' : 'Upload Document'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -277,11 +388,21 @@ export default function ClientDocumentsPage() {
                   <TableCell>{document.uploadedBy}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline" className="gap-2 bg-transparent">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="gap-2 bg-transparent hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => handleViewDocument(document.id.toString(), document.name)}
+                      >
                         <Eye className="h-4 w-4" />
                         View
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-2 bg-transparent">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="gap-2 bg-transparent hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => handleDownloadDocument(document.id.toString(), document.name)}
+                      >
                         <Download className="h-4 w-4" />
                         Download
                       </Button>
