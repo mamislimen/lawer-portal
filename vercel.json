@@ -9,7 +9,7 @@
     }
   },
   "env": {
-    "DATABASE_URL": "@database-url",
+    "DATABASE_URL": "@DATABASE_URL",
     "NEXTAUTH_SECRET": "@nextauth-secret",
     "STRIPE_SECRET_KEY": "@stripe-secret-key",
     "AGORA_APP_CERTIFICATE": "@agora-certificate",
