@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = 'force-dynamic';
-
 const handlers = {
   // GET /api/notifications - Get notifications for current user
   async GET(request: NextRequest) {
