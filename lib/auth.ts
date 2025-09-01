@@ -17,7 +17,8 @@ declare module 'next-auth' {
       email: string
       image?: string | null
       role: UserRole
-    }
+    },
+    callbackUrl?: string
   }
 
   interface User {
@@ -107,7 +108,7 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account, profile }: { user: any, account: any, profile?: any }) {
       try {
         // Handle Google OAuth sign-in
         if (account?.provider === 'google' && user.email) {
@@ -137,6 +138,18 @@ export const authOptions: NextAuthOptions = {
             });
           }
         }
+        // Get the full user data with role
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { role: true }
+        });
+
+        // Store the intended URL in the token for the redirect callback
+        if (account) {
+          // This will be available in the JWT callback
+          (account as any).userRole = dbUser?.role;
+        }
+
         return true;
       } catch (error) {
         console.error('Error in signIn callback:', error);
@@ -146,11 +159,16 @@ export const authOptions: NextAuthOptions = {
     
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id;
-        session.user.role = token.role;
-        session.user.email = token.email || '';
-        session.user.name = token.name || null;
-        session.user.image = token.picture || null;
+        // Ensure all required fields are set with proper types
+        session.user.id = token.id as string;
+        session.user.role = (token.role as UserRole) || 'CLIENT';
+        session.user.email = token.email as string || '';
+        session.user.name = token.name as string || null;
+        session.user.image = token.picture as string || null;
+        
+        // Set the callback URL based on user role
+        const role = session.user.role;
+        session.callbackUrl = (role === 'LAWYER' || role === 'ADMIN') ? '/dashboard' : '/client';
       }
       return session;
     },
@@ -158,22 +176,62 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account, profile }) {
       // Initial sign in
       if (account && user) {
+        // Fetch the latest user data from the database to ensure we have the correct role
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { 
+            role: true,
+            email: true,
+            name: true,
+            image: true
+          }
+        });
+        
+        if (!dbUser) {
+          return token;
+        }
+        
+        // Determine the role and set appropriate callback URL
+        const role = dbUser.role || 'CLIENT';
+        const callbackUrl = role === 'LAWYER' || role === 'ADMIN' ? '/dashboard' : '/client';
+        
         return {
           ...token,
           id: user.id,
-          role: user.role,
-          email: user.email,
-          name: user.name,
-          picture: user.image
+          role: role,
+          email: dbUser.email,
+          name: dbUser.name,
+          picture: dbUser.image,
+          callbackUrl: callbackUrl
         };
       }
+      
+      // On subsequent requests, update the token with the latest user data
+      if (token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { role: true }
+        });
+        
+        if (dbUser) {
+          token.role = dbUser.role;
+          // Update callback URL if role changes
+          token.callbackUrl = dbUser.role === 'CLIENT' ? '/client' : '/dashboard';
+        }
+      }
+      
       return token;
     },
     
-    async redirect({ url, baseUrl }) {
-      // After sign in, redirect to client dashboard
+    async redirect({ url, baseUrl }: { url: string, baseUrl: string }) {
+      // Allow redirects to continue if they're already set
       if (url.startsWith(baseUrl)) return url;
       if (url.startsWith('/')) return `${baseUrl}${url}`;
+      
+      // After sign in, redirect to dashboard if coming from sign-in
+      // The actual role-based redirect is handled in the sign-in callback
+      
+      // Default to client dashboard
       return `${baseUrl}/client`;
     }
   },

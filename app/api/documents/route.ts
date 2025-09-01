@@ -100,30 +100,63 @@ export async function GET() {
 // POST /api/documents - Upload a new document
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const formData = await request.formData();
+    const file = formData.get('file') as File | null;
+    const clientId = formData.get('clientId') as string | null;
+    const caseId = formData.get('caseId') as string | null;
+    const documentType = (formData.get('documentType') as string) || 'OTHER';
+
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
     
-    if (!session?.user?.id) {
-      return new NextResponse("Unauthorized", { status: 401 })
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client is required' }, { status: 400 });
+    }
+    
+    // Verify the client exists and is assigned to the current lawyer
+    const client = await prisma.clientProfile.findFirst({
+      where: {
+        userId: clientId,
+        assignedLawyerId: session.user.id
+      }
+    });
+    
+    if (!client) {
+      return NextResponse.json({ error: 'Client not found or not assigned to you' }, { status: 404 });
+    }
+    
+    // If caseId is provided, verify it belongs to the client
+    if (caseId) {
+      const caseExists = await prisma.case.findFirst({
+        where: {
+          id: caseId,
+          clientId: clientId
+        }
+      });
+      
+      if (!caseExists) {
+        return NextResponse.json({ error: 'Case not found or does not belong to the client' }, { status: 404 });
+      }
     }
 
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const caseId = formData.get('caseId') as string | null
+    // If caseId is provided, verify it belongs to the lawyer
+    if (caseId) {
+      const caseRecord = await prisma.case.findUnique({
+        where: { 
+          id: caseId,
+          lawyerId: session.user.id 
+        },
+      });
 
-    if (!file || !caseId) {
-      return new NextResponse("File and case ID are required", { status: 400 })
-    }
-
-    // Verify the case exists and belongs to the lawyer
-    const caseRecord = await prisma.case.findUnique({
-      where: { 
-        id: caseId,
-        lawyerId: session.user.id 
-      },
-    })
-
-    if (!caseRecord) {
-      return new NextResponse("Case not found or access denied", { status: 404 })
+      if (!caseRecord) {
+        return new NextResponse("Case not found or access denied", { status: 404 });
+      }
     }
 
     // Upload to Cloudinary
@@ -143,31 +176,47 @@ export async function POST(request: Request) {
       return 'OTHER';
     };
 
-    // Save to database
-    const [document] = await prisma.$transaction([
-      prisma.document.create({
-        data: {
-          filename: file.name,
-          originalName: file.name,
-          fileSize: file.size,
-          mimeType: file.type,
-          type: getDocumentType(file.type),
-          url: fileUrl,
-          uploaderId: session.user.id,
-          caseId: caseId || undefined,
-        },
-      }),
-      // Create notification for the lawyer
-      prisma.notification.create({
-        data: {
-          userId: caseRecord.lawyerId,
-          title: "New Document Uploaded",
-          message: `A new document "${file.name}" has been uploaded to case "${caseRecord.title}"`,
-          type: "DOCUMENT_UPLOADED" as NotificationType,
-          referenceId: caseId, // Store case ID to construct the link on frontend
-        },
-      }),
-    ]);
+    // Prepare the document data
+    const documentData = {
+      filename: file.name,
+      originalName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      type: getDocumentType(file.type),
+      url: fileUrl,
+      uploaderId: session.user.id,
+      caseId: caseId || undefined,
+    };
+
+    // Create document first
+    const document = await prisma.document.create({
+      data: documentData,
+    });
+
+    // If we have a caseId, create a notification
+    if (caseId) {
+      try {
+        const caseRecord = await prisma.case.findUnique({
+          where: { id: caseId },
+          select: { lawyerId: true, title: true }
+        });
+
+        if (caseRecord) {
+          await prisma.notification.create({
+            data: {
+              userId: caseRecord.lawyerId,
+              title: "New Document Uploaded",
+              message: `A new document "${file.name}" has been uploaded to case "${caseRecord.title}"`,
+              type: "DOCUMENT_UPLOADED" as NotificationType,
+              referenceId: caseId,
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Error creating notification:', error);
+        // Don't fail the whole operation if notification fails
+      }
+    }
 
     return NextResponse.json(document)
   } catch (error) {

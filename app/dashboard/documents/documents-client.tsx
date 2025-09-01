@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText } from "lucide-react"
 import { DocumentsTable } from "./components/documents-table"
-import { DocumentUpload } from "./components/document-upload"
+import { DocumentUpload } from "./components/document-upload-new"
 
 export function DocumentsClient() {
   const handleUploadSuccess = () => {

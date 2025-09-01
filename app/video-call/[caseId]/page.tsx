@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useSession } from "next-auth/react"
-import VideoCallRoom from "@/components/video-call/video-call-room"
+import VideoCallRoom from "@/components/video-call-room"
 import { Card, CardContent } from "@/components/ui/card"
 import { Loader2 } from "lucide-react"
 
@@ -16,7 +16,7 @@ interface VideoCall {
   caseId?: string
   status: string
   scheduledAt: string
-  agoraChannelName: string
+  roomName: string
   host: {
     id: string
     name: string
@@ -53,6 +53,41 @@ export default function VideoCallPage() {
 
     const fetchVideoCall = async () => {
       try {
+        // Try to fetch from appointments API first (for appointment-based video calls)
+        const appointmentResponse = await fetch(`/api/appointments`)
+        if (appointmentResponse.ok) {
+          const appointments = await appointmentResponse.json()
+          const appointment = appointments.find((appt: any) => appt.id === callId)
+          
+          if (appointment) {
+            // Check if user has access to this appointment
+            if (appointment.lawyerId !== session.user.id && appointment.clientId !== session.user.id) {
+              setError("You do not have access to this video call")
+              return
+            }
+
+            // Create video call object from appointment
+            const videoCallFromAppointment: VideoCall = {
+              id: appointment.id,
+              title: appointment.title,
+              description: appointment.description,
+              hostId: appointment.lawyerId,
+              participantId: appointment.clientId,
+              caseId: appointment.caseId,
+              status: appointment.status,
+              scheduledAt: appointment.startTime,
+              roomName: `appointment_${appointment.id}`,
+              host: appointment.lawyer,
+              participant: appointment.client,
+              case: appointment.case
+            }
+
+            setVideoCall(videoCallFromAppointment)
+            return
+          }
+        }
+
+        // Fallback to video calls API
         const response = await fetch("/api/video-calls")
         if (!response.ok) {
           throw new Error("Failed to fetch video calls")
@@ -124,5 +159,5 @@ export default function VideoCallPage() {
 
   const isHost = videoCall.hostId === session?.user.id
 
-  return <VideoCallRoom callId={videoCall.id} channelName={videoCall.agoraChannelName} isHost={isHost} />
+  return <VideoCallRoom callId={videoCall.id} roomName={videoCall.roomName} isHost={isHost} />
 }

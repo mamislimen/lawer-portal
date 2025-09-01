@@ -14,33 +14,71 @@ const roleProtectedPaths: Record<string, Role[]> = {
   '/admin': ['ADMIN'],
 };
 
+// Public paths that don't require authentication
+const publicPaths = ['/auth/signin', '/auth/signup', '/api/auth'];
+
 // Secret for JWT from .env
 const SECRET = process.env.NEXTAUTH_SECRET;
 
+// Debug log function
+const debug = (...args: any[]) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Middleware]', ...args);
+  }
+};
+
 export async function middleware(req: NextRequest) {
   const url = req.nextUrl.clone();
+  const { pathname } = req.nextUrl;
 
-  // Skip static files and public folder
-  if (url.pathname.startsWith('/_next') || url.pathname.startsWith('/public')) {
+  // Skip static files, public folder, and public paths
+  if (
+    pathname.startsWith('/_next') || 
+    pathname.startsWith('/public') ||
+    publicPaths.some(publicPath => pathname.startsWith(publicPath))
+  ) {
+    debug('Skipping middleware for path:', pathname);
     return NextResponse.next();
   }
 
+  debug('Checking access for path:', pathname);
+
   // Get session token
   const token = await getToken({ req, secret: SECRET });
+  debug('Token data:', { hasToken: !!token, tokenRole: token?.role });
 
   if (!token) {
-    // Not authenticated, redirect to sign-in
+    debug('No token found, redirecting to signin');
     url.pathname = '/auth/signin';
+    url.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(url);
   }
 
-  const userRole = (token.role || '').toUpperCase() as Role;
+  const userRole = (token.role || 'CLIENT').toUpperCase() as Role;
+  debug('User role:', userRole);
 
-  // Check role-based access
+  // Redirect to appropriate dashboard based on role
+  if (pathname === '/' || pathname === '/dashboard') {
+    const roleBasedPath = userRole === 'CLIENT' ? '/client' : '/dashboard';
+    if (pathname !== roleBasedPath) {
+      debug(`Redirecting to role-based path: ${roleBasedPath}`);
+      url.pathname = roleBasedPath;
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // Check role-based access for protected paths
   for (const path in roleProtectedPaths) {
-    if (url.pathname.startsWith(path)) {
-      if (!roleProtectedPaths[path].includes(userRole)) {
-        url.pathname = '/unauthorized'; // Or show a 403 page
+    if (pathname.startsWith(path)) {
+      const allowedRoles = roleProtectedPaths[path];
+      const hasAccess = allowedRoles.some(role => 
+        role.toUpperCase() === userRole.toUpperCase()
+      );
+      
+      if (!hasAccess) {
+        console.warn(`Access denied: User role ${userRole} not in [${allowedRoles.join(', ')}] for path ${path}`);
+        // Redirect to home page instead of unauthorized page
+        url.pathname = '/';
         return NextResponse.redirect(url);
       }
     }

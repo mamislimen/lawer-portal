@@ -381,6 +381,14 @@ export default function ClientsPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <Button 
+            variant="outline" 
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() => window.location.href = '/dashboard/video-calls/start'}
+          >
+            <Phone className="mr-2 h-4 w-4" />
+            Start Video Call
+          </Button>
           <Button onClick={() => setIsAddDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> Add Client
           </Button>

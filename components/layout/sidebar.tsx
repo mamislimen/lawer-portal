@@ -15,6 +15,8 @@ import {
   BarChart3,
   Calendar,
   FileText,
+  DollarSign,
+  CreditCard,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -40,6 +42,11 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       name: "Cases",
       href: "/dashboard/cases",
       icon: Briefcase,
+    },
+    {
+      name: "Pricing",
+      href: "/dashboard/pricing",
+      icon: DollarSign,
     },
     {
       name: "Services",

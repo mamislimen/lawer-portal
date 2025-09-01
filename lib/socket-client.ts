@@ -8,15 +8,13 @@ type SocketConfig = Partial<ManagerOptions & SocketOptions>;
 
 // Default socket configuration
 const defaultSocketConfig: SocketConfig = {
-  path: '/api/socketio',
   transports: ['websocket', 'polling'],
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
   timeout: 10000,
-  autoConnect: true,
-  withCredentials: true
+  autoConnect: true
 };
 
 /**
@@ -31,16 +29,14 @@ export const getSocket = (config: SocketConfig = {}): Socket => {
     return socket;
   }
 
-  // Get the base URL from environment or use current origin
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                 (typeof window !== 'undefined' ? window.location.origin : '');
-  const socketUrl = baseUrl ? new URL('/api/socketio', baseUrl).toString() : '/api/socketio';
+  const socketUrl = '/';
 
   console.log('Initializing WebSocket connection to:', socketUrl);
 
   // Merge default config with any provided config
   const socketConfig: SocketConfig = {
     ...defaultSocketConfig,
+    path: '/api/socketio',
     ...config,
   };
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { signIn, useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { format, parseISO, isBefore, isToday, isTomorrow } from "date-fns"
 import { Calendar, Clock, Video, MapPin, Phone, Loader2, AlertCircle, RefreshCw } from "lucide-react"
 import { useSocket } from "@/hooks/use-socket"
@@ -107,6 +108,7 @@ const getTypeIcon = (type: AppointmentType) => {
 
 export default function LawyerAppointmentsPage() {
   const { data: session, status } = useSession()
+  const router = useRouter()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -211,6 +213,11 @@ export default function LawyerAppointmentsPage() {
       fetchAppointments().catch(console.error)
     }
   }, [status, fetchAppointments])
+
+  const handleJoinVideoCall = (appointmentId: string) => {
+    // Navigate to video call room using the same room naming pattern as client
+    router.push(`/video-call/${appointmentId}`)
+  }
 
   if (status === 'loading') {
     return (
@@ -375,7 +382,12 @@ export default function LawyerAppointmentsPage() {
                     <div className="flex flex-col sm:flex-row gap-2">
                       {appointment.status === "SCHEDULED" && (
                         <>
-                          <Button size="sm" variant="outline" className="gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="gap-2"
+                            onClick={() => handleJoinVideoCall(appointment.id)}
+                          >
                             <Video className="h-4 w-4" />
                             Join
                           </Button>

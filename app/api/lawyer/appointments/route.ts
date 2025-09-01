@@ -20,18 +20,8 @@ export async function GET() {
       )
     }
 
-    // Get the lawyer's ID from the session
-    const lawyerId = session.user.lawyerId
-    
-    if (!lawyerId) {
-      return new NextResponse(
-        JSON.stringify({ 
-          error: 'Not Found',
-          message: 'Lawyer profile not found.'
-        }), 
-        { status: 404 }
-      )
-    }
+    // Get the lawyer's ID from the session (for lawyers, lawyerId is the same as user id)
+    const lawyerId = session.user.id
 
     // Fetch appointments for the lawyer
     const appointments = await prisma.appointment.findMany({

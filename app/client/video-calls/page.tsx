@@ -1,22 +1,18 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import type { Session } from "next-auth";
 import { format } from "date-fns";
-import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/use-toast";
-import AgoraRTC, {
-  IAgoraRTCClient,
-  IAgoraRTCRemoteUser,
-  ICameraVideoTrack,
-  IMicrophoneAudioTrack,
-} from "agora-rtc-sdk-ng";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, CalendarPlus, Calendar, Clock } from "lucide-react";
-import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Monitor } from "lucide-react";
 import { ScheduleCallDialog } from "./components/ScheduleCallDialog";
+import VideoCallRoom from "@/components/video-call-room";
+
+
 interface User {
   id: string;
   name: string | null;
@@ -35,108 +31,40 @@ interface VideoCall {
   description: string | null;
   status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
   scheduledAt: string;
-  startedAt: string | null;
-  endedAt: string | null;
   duration: number | null;
-  recordingUrl: string | null;
-  agoraChannelName: string;
-  host: User;
-  participant: User | null;
-  case: Case | null;
+  roomName: string;
   isHost: boolean;
-  meetingLink: string;
 }
 
-type CallStatus = "disconnected" | "connecting" | "connected" | "failed" | "ended" | "disconnecting";
-
-const APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID || "";
-const TOKEN = process.env.NEXT_PUBLIC_AGORA_TOKEN || "";
-
 export default function ClientVideoCallsPage() {
-  const router = useRouter();
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
-  const [recentAppointment, setRecentAppointment] = useState<any>(null);
-  const { data: session, status } = useSession();
+  const { data: session, status } = useSession() as { data: Session | null; status: 'loading' | 'authenticated' | 'unauthenticated' };
 
-  // Video calls state
   const [videoCalls, setVideoCalls] = useState<VideoCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
 
-  // Call state
   const [currentCall, setCurrentCall] = useState<VideoCall | null>(null);
   const [isInCall, setIsInCall] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<CallStatus>("disconnected");
-  const [isVideoOn, setIsVideoOn] = useState(true);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
-  // Refs
-  const clientRef = useRef<IAgoraRTCClient | null>(null);
-  const localAudioTrack = useRef<IMicrophoneAudioTrack | null>(null);
-  const localVideoTrack = useRef<ICameraVideoTrack | null>(null);
-  const localVideoRef = useRef<HTMLDivElement>(null);
-  const remoteVideoRef = useRef<HTMLDivElement>(null);
-  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Handle when a new appointment is created
-  const handleAppointmentCreated = async (newAppointment: any) => {
-    try {
-      // Refresh the video calls list to include the new appointment
-      await fetchVideoCalls();
-      toast({
-        title: "Success",
-        description: "Video call scheduled successfully!",
-      });
-    } catch (error) {
-      console.error("Error handling new appointment:", error);
-      toast({
-        title: "Error",
-        description: "Failed to update video calls list",
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Fetch video calls from API
   const fetchVideoCalls = async () => {
     try {
       setLoading(true);
-      // Fetch appointments of type 'MEETING' which we're using for video calls
       const response = await fetch("/api/appointments?type=MEETING");
       if (!response.ok) throw new Error("Failed to fetch video calls");
       
       const appointments = await response.json();
       
-      // Transform appointments into VideoCall format
       const videoCallsData = appointments.map((appt: any) => ({
         id: appt.id,
         title: appt.title,
         description: appt.description,
         status: appt.status,
         scheduledAt: appt.startTime,
-        startedAt: appt.startedAt || null,
-        endedAt: appt.endedAt || null,
-        duration: appt.duration || 30, // Default to 30 minutes if not specified
-        recordingUrl: null, // Add this if you implement recording later
-        agoraChannelName: `video-call-${appt.id}`, // Generate a channel name
-        host: {
-          id: appt.lawyer?.id || '',
-          name: appt.lawyer?.name || 'Lawyer',
-          email: appt.lawyer?.email || null,
-          image: appt.lawyer?.image || null
-        },
-        participant: {
-          id: appt.client?.id || '',
-          name: appt.client?.name || 'Client',
-          email: appt.client?.email || null,
-          image: appt.client?.image || null
-        },
-        case: appt.case || null,
-        isHost: session?.user?.id === appt.lawyerId,
-        meetingLink: `/client/video-calls/${appt.id}`
+        duration: appt.duration || 30,
+        roomName: `appointment_${appt.id}`,
+        isHost: (session?.user as { id: string })?.id === appt.lawyerId,
       }));
       
       setVideoCalls(videoCallsData);
@@ -153,324 +81,73 @@ export default function ClientVideoCallsPage() {
     }
   };
 
-  // Initialize Agora client
-  const initAgoraClient = () => {
-    if (typeof window !== 'undefined' && !clientRef.current) {
-      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-      clientRef.current = client;
-    }
-    return clientRef.current;
+  const handleAppointmentCreated = async () => {
+    await fetchVideoCalls();
+    toast({
+      title: "Success",
+      description: "Video call scheduled successfully!",
+    });
   };
 
-  // Join a video call
-  const joinCall = async (call: VideoCall) => {
-    try {
+  const handleJoinCall = (call: VideoCall) => {
+    if (session?.user) {
       setCurrentCall(call);
       setIsInCall(true);
-      setConnectionStatus('connecting');
-      
-      if (!APP_ID) {
-        const errorMsg = "Agora App ID is not configured. Please check your environment variables.";
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
-      
-      // Initialize Agora client
-      const client = initAgoraClient();
-      if (!client) {
-        const errorMsg = "Failed to initialize Agora client. The browser may not be supported.";
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
-      
-      // For testing purposes, you can use a simple channel name
-      // In production, use the call.agoraChannelName
-      const channelName = call.agoraChannelName || `test-channel-${Date.now()}`;
-      const userId = session?.user?.id || `user-${Math.random().toString(36).substr(2, 9)}`;
-      
-      console.log(`Joining channel: ${channelName} with user: ${userId}`);
-      
-      // Join the channel with error handling for network issues
-      try {
-        await client.join(
-          APP_ID,
-          channelName,
-          TOKEN || null, // Token is optional for testing
-          userId
-        );
-        console.log("Successfully joined channel");
-      } catch (joinError) {
-        console.error("Failed to join channel:", joinError);
-        throw new Error("Could not connect to the video call. Please check your internet connection and try again.");
-      }
-      
-      // Create and publish local tracks with error handling
-      let audioTrack: IMicrophoneAudioTrack | null = null;
-      let videoTrack: ICameraVideoTrack | null = null;
-      
-      try {
-        [audioTrack, videoTrack] = await Promise.all([
-          AgoraRTC.createMicrophoneAudioTrack().catch(err => {
-            console.warn("Could not access microphone:", err);
-            return null;
-          }),
-          AgoraRTC.createCameraVideoTrack({
-            encoderConfig: {
-              width: { min: 640, ideal: 1280, max: 1920 },
-              height: { min: 480, ideal: 720, max: 1080 },
-              frameRate: { max: 30 }
-            }
-          }).catch(err => {
-            console.warn("Could not access camera:", err);
-            return null;
-          })
-        ]);
-        
-        // Store track references if they exist
-        if (audioTrack) {
-          localAudioTrack.current = audioTrack;
-        }
-        if (videoTrack) {
-          localVideoTrack.current = videoTrack;
-        }
-        
-        // Publish tracks if they were created successfully
-        const tracksToPublish = [];
-        if (audioTrack) {
-          tracksToPublish.push(audioTrack);
-        }
-        if (videoTrack) {
-          tracksToPublish.push(videoTrack);
-        }
-        
-        if (tracksToPublish.length > 0) {
-          await client.publish(tracksToPublish);
-        } else {
-          console.warn("No tracks were published. Microphone and camera access might be denied.");
-        }
-        
-        // Play local video if available
-        if (videoTrack) {
-          const localVideoElement = document.getElementById("local-video");
-          if (localVideoElement) {
-            videoTrack.play("local-video", { fit: "cover" });
-          }
-        }
-        
-        // Set up event listeners for remote users
-        client.on("user-published", handleUserPublished);
-        client.on("user-unpublished", handleUserUnpublished);
-        client.on("user-left", handleUserLeft);
-        
-        // Start call timer
-        callTimerRef.current = setInterval(() => {
-          setCallDuration(prev => prev + 1);
-        }, 1000);
-        
-        setConnectionStatus("connected");
-        toast({
-        title: "Success",
-        description: "Successfully joined the call!",
-        variant: "default",
-      });
-        
-      } catch (trackError) {
-        console.error("Error setting up media tracks:", trackError);
-        throw new Error("Could not access your camera or microphone. Please check your device permissions and try again.");
-      }
-      
-    } catch (error) {
-      console.error("Error joining call:", error);
-      setConnectionStatus("failed");
+    } else {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to join the call. Please try again.",
+        title: "Authentication Error",
+        description: "You must be logged in to join a call.",
         variant: "destructive",
       });
-      leaveCall();
     }
   };
 
-  const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: "audio" | "video") => {
-    await clientRef.current?.subscribe(user, mediaType);
-    if (mediaType === "video" && remoteVideoRef.current) user.videoTrack?.play(remoteVideoRef.current);
-    if (mediaType === "audio") user.audioTrack?.play();
+  const handleLeaveCall = () => {
+    setIsInCall(false);
+    setCurrentCall(null);
+    toast({
+      title: "Success",
+      description: "You have left the call.",
+    });
   };
 
-  const handleUserUnpublished = (user: IAgoraRTCRemoteUser) => {};
-  const handleUserLeft = (user: IAgoraRTCRemoteUser) => {};
-
-  const leaveCall = async () => {
-    try {
-      setConnectionStatus("disconnecting");
-      
-      // Stop all tracks and clean up resources
-      const cleanupPromises = [];
-      
-      // Stop and clean up audio track
-      if (clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio")) {
-        cleanupPromises.push(
-          (async () => {
-            try {
-              clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio")?.stop();
-              clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio")?.close();
-            } catch (err) {
-              console.error("Error cleaning up audio track:", err);
-            }
-          })()
-        );
-      }
-      
-      // Stop and clean up video track
-      if (clientRef.current?.localTracks.find((t) => t.trackMediaType === "video")) {
-        cleanupPromises.push(
-          (async () => {
-            try {
-              clientRef.current?.localTracks.find((t) => t.trackMediaType === "video")?.stop();
-              clientRef.current?.localTracks.find((t) => t.trackMediaType === "video")?.close();
-            } catch (err) {
-              console.error("Error cleaning up video track:", err);
-            }
-          })()
-        );
-      }
-      
-      // Stop and clean up screen share if active
-      if (isScreenSharing) {
-        cleanupPromises.push(
-          (async () => {
-            try {
-              // Stop and clean up screen share
-              // NOTE: You need to implement the screenTrack cleanup logic here
-            } catch (err) {
-              console.error("Error cleaning up screen share:", err);
-            }
-          })()
-        );
-      }
-      
-      // Leave the channel and clean up Agora client
-      if (clientRef.current) {
-        try {
-          // Unpublish all tracks first
-          try {
-            await clientRef.current.unpublish();
-          } catch (unpublishError) {
-            console.warn("Error unpublishing tracks:", unpublishError);
-          }
-          
-          // Leave the channel
-          try {
-            await clientRef.current.leave();
-          } catch (leaveError) {
-            console.warn("Error leaving channel:", leaveError);
-          }
-          
-          // Remove all event listeners
-          clientRef.current.removeAllListeners();
-          clientRef.current = null;
-        } catch (clientError) {
-          console.error("Error cleaning up Agora client:", clientError);
-        }
-      }
-      
-      // Clear call timer
-      if (callTimerRef.current) {
-        clearInterval(callTimerRef.current);
-        callTimerRef.current = null;
-      }
-      
-      // Wait for all cleanup operations to complete
-      await Promise.allSettled(cleanupPromises);
-      
-      // Reset state
-      setConnectionStatus("disconnected");
-      setIsInCall(false);
-      setCurrentCall(null);
-      setCallDuration(0);
-      setIsMuted(false);
-      setIsVideoOn(true);
-      
-      // Notify user
-      toast({
-        title: "Success",
-        description: "You have left the call",
-        variant: "default",
-      });
-      
-    } catch (error) {
-      console.error("Error during call cleanup:", error);
-      toast({
-        title: "Error",
-        description: "Error leaving the call. Some resources may not have been cleaned up properly.",
-        variant: "destructive",
-      });
-    } finally {
-          // Ensure we always reset the connection status, even if there was an error
-      setConnectionStatus("disconnected");
-    }
-  };
-
-  const toggleMute = () => {
-    const audioTrack = clientRef.current?.localTracks.find((t) => t.trackMediaType === "audio");
-    if (audioTrack) {
-      audioTrack.setMuted(!isMuted);
-      setIsMuted(!isMuted);
-    }
-  };
-
-  const toggleVideo = () => {
-    const videoTrack = clientRef.current?.localTracks.find((t) => t.trackMediaType === "video");
-    if (videoTrack) {
-      videoTrack.setMuted(!isVideoOn);
-      setIsVideoOn(!isVideoOn);
-    }
-  };
-
-  const toggleScreenShare = async () => {
-    try {
-      if (!isScreenSharing) {
-        const screenTrack = await AgoraRTC.createScreenVideoTrack({}, "disable");
-        await clientRef.current?.unpublish();
-        await clientRef.current?.publish([screenTrack]);
-        setIsScreenSharing(true);
-      } else {
-        await clientRef.current?.unpublish();
-        const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-        await clientRef.current?.publish([audioTrack, videoTrack]);
-        setIsScreenSharing(false);
-      }
-    } catch (err) {
-      console.error(err);
-      toast({
-        title: "Error",
-        description: "Failed to toggle screen share",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const startCallTimer = () => {
-    setCallDuration(0);
-    callTimerRef.current = setInterval(() => setCallDuration((prev) => prev + 1), 1000);
-  };
-
-  const formatCallDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  const handleEndCall = () => {
+    setIsInCall(false);
+    setCurrentCall(null);
+    // Here you might want to update the call status in the backend
+    toast({
+      title: "Call Ended",
+      description: "The video call has ended.",
+    });
   };
 
   useEffect(() => {
-    if (status === "authenticated") fetchVideoCalls();
-    return () => {
-      leaveCall();
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-    };
+    if (status === "authenticated") {
+      fetchVideoCalls();
+    }
   }, [status]);
 
-  if (loading) return <Loader2 className="animate-spin" />;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (status === "loading" || loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="animate-spin h-10 w-10" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="text-red-500 text-center mt-10">{error}</div>;
+  }
+
+  if (isInCall && currentCall && session?.user) {
+    return (
+      <VideoCallRoom
+        callId={currentCall.id}
+        roomName={currentCall.roomName}
+        isHost={currentCall.isHost}
+      />
+    );
+  }
 
   return (
     <div className="container mx-auto p-4">
@@ -528,11 +205,11 @@ export default function ClientVideoCallsPage() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button 
-                        onClick={() => joinCall(call)}
-                        disabled={connectionStatus === 'connecting' || connectionStatus === 'connected'}
+                        onClick={() => handleJoinCall(call)}
+                        disabled={isInCall}
                         className="whitespace-nowrap"
                       >
-                        {connectionStatus === 'connecting' ? (
+                        {isInCall && currentCall?.id === call.id ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : null}
                         {call.status === 'IN_PROGRESS' ? 'Join Call' : 'Start Call'}
@@ -611,26 +288,6 @@ export default function ClientVideoCallsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Video call interface */}
-      {isInCall && currentCall && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col">
-          <div ref={remoteVideoRef} className="flex-1" />
-          <div ref={localVideoRef} className="flex-1" />
-          <div className="flex justify-end p-4">
-            <Button onClick={toggleMute}>
-              {isMuted ? <MicOff /> : <Mic />}
-            </Button>
-            <Button onClick={toggleVideo}>
-              {isVideoOn ? <VideoOff /> : <VideoIcon />}
-            </Button>
-            <Button onClick={toggleScreenShare}>
-              {isScreenSharing ? <Monitor /> : <PhoneOff />}
-            </Button>
-            <Button onClick={leaveCall}>Leave Call</Button>
-          </div>
-        </div>
-      )}
-      {/* Schedule Call Dialog */}
       <ScheduleCallDialog 
         open={isScheduleDialogOpen}
         onOpenChange={setIsScheduleDialogOpen}

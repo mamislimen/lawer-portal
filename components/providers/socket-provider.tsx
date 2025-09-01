@@ -60,6 +60,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
       const onDisconnect = () => {
         setIsConnected(false);
+        setConnectionError(null);
         console.log('Socket disconnected');
       };
 
@@ -107,13 +108,10 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   }, [socket]);
 
   const disconnect = useCallback(() => {
-    if (socket) {
-      console.log('Disconnecting socket...');
-      socket.disconnect();
-      setSocket(null);
-      setIsConnected(false);
-    }
-  }, [socket]);
+    disconnectSocket();
+    setSocket(null);
+    setIsConnected(false);
+  }, []);
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo<SocketContextType>(() => ({

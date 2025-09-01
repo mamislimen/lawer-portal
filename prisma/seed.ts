@@ -134,7 +134,7 @@ async function main() {
       caseId: case1.id,
       status: "SCHEDULED",
       scheduledAt: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
-      agoraChannelName: `case_${case1.id}_${Date.now()}`,
+      roomName: `case_${case1.id}_${Date.now()}`,
     },
   })
 

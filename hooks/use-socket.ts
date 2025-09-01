@@ -77,13 +77,11 @@ export const useSocket = () => {
   }, [socket]);
 
   const disconnect = useCallback(() => {
-    if (socket) {
-      console.log('Disconnecting socket...');
-      socket.disconnect();
-      setSocket(null);
-      setIsConnected(false);
-    }
-  }, [socket]);
+    console.log('Disconnecting socket...');
+    disconnectSocket();
+    setSocket(null);
+    setIsConnected(false);
+  }, []);
 
   // Initialize socket connection
   useEffect(() => {

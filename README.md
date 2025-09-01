@@ -24,7 +24,7 @@ A modern, full-featured legal portal built with Next.js 14, featuring real-time 
 - **Message History**: Complete conversation history
 
 ### 📹 **Video Calling**
-- **HD Video Calls**: Powered by Agora.io
+- **HD Video Calls**: Powered by ZEGOCLOUD
 - **Screen Sharing**: Share documents and presentations
 - **Audio Controls**: Mute/unmute microphone
 - **Video Controls**: Enable/disable camera
@@ -73,7 +73,7 @@ A modern, full-featured legal portal built with Next.js 14, featuring real-time 
 - **NextAuth.js**: Authentication library
 
 ### **Real-time Features**
-- **Agora.io**: Video calling and screen sharing
+- **ZEGOCLOUD**: Video calling and screen sharing
 - **Socket.io**: Real-time messaging
 - **WebRTC**: Peer-to-peer communication
 
@@ -155,14 +155,14 @@ CLOUDINARY_API_KEY="your-api-key"
 CLOUDINARY_API_SECRET="your-api-secret"
 \`\`\`
 
-#### **4. Agora.io (Video Calls)**
-1. Go to [agora.io](https://agora.io) → Create account
-2. Create project → Copy App ID and App Certificate
+#### **4. ZEGOCLOUD (Video Calls)**
+1. Go to [zegocloud.com](https://zegocloud.com) → Sign up
+2. Create a new project
 3. Add to `.env.local`:
-\`\`\`env
-AGORA_APP_ID="your-app-id"
-AGORA_APP_CERTIFICATE="your-app-certificate"
-\`\`\`
+```env
+ZEGOCLOUD_APP_ID=your-app-id
+ZEGOCLOUD_SERVER_SECRET=your-server-secret
+```
 
 #### **5. Resend (Email)**
 1. Go to [resend.com](https://resend.com) → Sign up

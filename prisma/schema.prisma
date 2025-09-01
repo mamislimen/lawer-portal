@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+    directUrl    = env("DIRECT_URL") // Prisma will use this for migrations
 }
 
 model Account {
@@ -89,6 +90,8 @@ model User {
   timeEntries           TimeEntry[]          @relation("LawyerTimeEntries")
   hostedCalls           VideoCall[]          @relation("HostedCalls")
   joinedCalls           VideoCall[]          @relation("JoinedCalls")
+  lawyerCasePricing     CasePricing[]        @relation("LawyerCasePricing")
+  clientPaymentIntents  PaymentIntent[]      @relation("ClientPaymentIntents")
 }
 
 model VerificationToken {
@@ -175,6 +178,7 @@ model Case {
   messages     Message[]
   timeEntries  TimeEntry[]
   videoCalls   VideoCall[]
+  casePricing  CasePricing[]
 
   @@index([lawyerId])
   @@index([clientId])
@@ -232,7 +236,7 @@ model VideoCall {
   endedAt          DateTime?
   duration         Int?
   recordingUrl     String?
-  agoraChannelName String          @unique
+  roomName         String?         @unique
   createdAt        DateTime        @default(now())
   case             Case?           @relation(fields: [caseId], references: [id])
   host             User            @relation("HostedCalls", fields: [hostId], references: [id])
@@ -460,4 +464,61 @@ enum TimeEntryStatus {
   APPROVED
   REJECTED
   BILLED
+}
+
+model CasePricing {
+  id              String            @id @default(cuid())
+  caseId          String
+  lawyerId        String
+  basePrice       Float
+  hourlyRate      Float
+  estimatedHours  Float
+  totalEstimate   Float
+  description     String?
+  status          CasePricingStatus @default(DRAFT)
+  sentAt          DateTime?
+  acceptedAt      DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  case            Case              @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  lawyer          User              @relation("LawyerCasePricing", fields: [lawyerId], references: [id], onDelete: Cascade)
+  paymentIntents  PaymentIntent[]
+
+  @@index([caseId])
+  @@index([lawyerId])
+  @@index([status])
+}
+
+model PaymentIntent {
+  id              String              @id @default(cuid())
+  stripeSessionId String              @unique
+  quoteId         String
+  clientId        String
+  amount          Float
+  status          PaymentIntentStatus @default(PENDING)
+  paidAt          DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  quote           CasePricing         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  client          User                @relation("ClientPaymentIntents", fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@index([clientId])
+  @@index([status])
+}
+
+enum CasePricingStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  PAID
+  REJECTED
+}
+
+enum PaymentIntentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELED
 }

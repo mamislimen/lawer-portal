@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(videoCalls)
   } catch (error) {
     console.error("Error fetching video calls:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: "Internal server error"+error }, { status: 500 })
   }
 }
 
@@ -104,8 +104,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate unique channel name for Agora
-    const channelName = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    // Generate unique room name
+    const roomName = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     const videoCall = await prisma.videoCall.create({
       data: {
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
         participantId: validatedData.participantId,
         caseId: validatedData.caseId,
         scheduledAt: new Date(validatedData.scheduledAt),
-        agoraChannelName: channelName,
+        roomName: roomName,
       },
       include: {
         host: {

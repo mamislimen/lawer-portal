@@ -14,6 +14,10 @@ export async function GET() {
     // Get all video calls where the current user is either the host or participant
     const videoCalls = await prisma.videoCall.findMany({
       where: {
+        OR: [
+          { hostId: session.user.id },
+          { participantId: session.user.id }
+        ]
       },
       include: {
         participant: {
